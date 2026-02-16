@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root {
+      --green-dark: #1a3a25;
+      --green-mid: #2E5339;
+      --green-light: #4A7C59;
+      --green-bg: #e8f5e9;
+      --green-accent: #8cc99e;
+      --white: #fff;
+      --gray-bg: #f5f5f5;
+      --gray-light: #eee;
+      --gray-mid: #999;
+      --gray-dark: #333;
+      --yellow-bg: #fff3cd;
+      --yellow-text: #856404;
+      --red-bg: #f8d7da;
+      --red-text: #721c24;
+      --blue: #1976d2;
+      --radius: 10px;
+      --shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: var(--gray-bg); min-height: 100vh; padding-bottom: 70px; }
+
+    /* ── Header ── */
+    .header {
+      background: var(--green-dark); color: var(--white); padding: 12px 16px;
+      text-align: center; position: sticky; top: 0; z-index: 100;
+    }
+    .header h1 { font-size: 16px; letter-spacing: 1px; }
+    .header .tag { font-size: 9px; color: var(--green-accent); font-style: italic; }
+
+    /* ── Bottom Tab Navigation ── */
+    .tab-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--green-dark); display: flex; z-index: 100;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+    }
+    .tab-btn {
+      flex: 1; padding: 8px 4px; text-align: center; color: rgba(255,255,255,0.5);
+      border: none; background: none; cursor: pointer; font-size: 10px;
+      transition: color 0.2s;
+    }
+    .tab-btn .icon { font-size: 20px; display: block; margin-bottom: 2px; }
+    .tab-btn.active { color: var(--green-accent); }
+    .tab-btn:hover { color: var(--white); }
+
+    /* ── Tab Panels ── */
+    .tab-panel { display: none; padding: 15px; max-width: 600px; margin: 0 auto; }
+    .tab-panel.active { display: block; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--white); border-radius: var(--radius); padding: 16px;
+      margin-bottom: 12px; box-shadow: var(--shadow);
+    }
+    .card h3 { color: var(--green-mid); font-size: 14px; margin-bottom: 10px; }
+
+    /* ── Status Banner ── */
+    .status-bar {
+      padding: 10px 14px; border-radius: 8px; text-align: center;
+      font-size: 13px; font-weight: bold; margin-bottom: 12px;
+      transition: all 0.3s;
+    }
+    .status-bar.ready { background: var(--green-bg); color: var(--green-mid); }
+    .status-bar.working { background: var(--yellow-bg); color: var(--yellow-text); }
+    .status-bar.success { background: #d4edda; color: #155724; }
+    .status-bar.error { background: var(--red-bg); color: var(--red-text); }
+
+    /* ── Scan Counter ── */
+    .scan-counter {
+      text-align: center; padding: 8px; background: var(--green-mid);
+      color: var(--white); border-radius: 8px; margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .scan-counter span { font-size: 22px; font-weight: bold; }
+
+    /* ── QR Scanner Container ── */
+    #qr-reader { width: 100%; border-radius: var(--radius); overflow: hidden; margin-bottom: 12px; }
+    #qr-reader video { border-radius: var(--radius); }
+    #qr-reader__scan_region { border-radius: var(--radius) !important; }
+    #qr-reader__dashboard { padding: 8px !important; }
+    #qr-reader__dashboard button { 
+      background: var(--green-mid) !important; color: var(--white) !important;
+      border: none !important; border-radius: 6px !important; padding: 8px 16px !important;
+      font-size: 13px !important; cursor: pointer !important;
+    }
+    #qr-reader__dashboard select {
+      padding: 6px !important; border-radius: 6px !important; border: 2px solid var(--green-mid) !important;
+    }
+
+    /* ── Photo scanner (reuse same styles) ── */
+    #photo-qr-reader { width: 100%; border-radius: var(--radius); overflow: hidden; margin-bottom: 12px; }
+    #photo-qr-reader video { border-radius: var(--radius); }
+
+    /* ── Manual Input ── */
+    .input-group { display: flex; gap: 8px; margin-bottom: 10px; }
+    .input-group input, .input-group select {
+      flex: 1; padding: 12px; font-size: 16px; border: 2px solid var(--green-mid);
+      border-radius: 8px; font-weight: bold;
+    }
+    .input-group input:focus, .input-group select:focus {
+      outline: none; border-color: #28a745;
+      box-shadow: 0 0 0 3px rgba(40,167,69,0.2);
+    }
+    .go-btn {
+      padding: 12px 20px; font-size: 16px; font-weight: bold;
+      background: var(--green-mid); color: var(--white); border: none;
+      border-radius: 8px; cursor: pointer; white-space: nowrap;
+    }
+    .go-btn:hover { background: var(--green-light); }
+    .go-btn:disabled { background: #ccc; }
+
+    /* ── Drop Zone ── */
+    .drop-zone {
+      border: 3px dashed var(--green-mid); border-radius: var(--radius);
+      padding: 40px 20px; text-align: center; background: var(--green-bg);
+      cursor: pointer; transition: all 0.3s; margin-bottom: 12px;
+      min-height: 180px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    .drop-zone.dragover { border-color: #28a745; background: #c8e6c9; transform: scale(1.02); }
+    .drop-zone .icon { font-size: 48px; margin-bottom: 10px; }
+    .drop-zone .label { font-size: 14px; color: var(--green-mid); font-weight: bold; }
+    .drop-zone .sublabel { font-size: 11px; color: var(--gray-mid); margin-top: 5px; }
+    .drop-zone input[type="file"] { display: none; }
+
+    /* ── Order Form ── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .form-grid.full { grid-template-columns: 1fr; }
+    .form-field { margin-bottom: 2px; }
+    .form-field label { font-size: 10px; color: var(--gray-mid); text-transform: uppercase; font-weight: bold; display: block; margin-bottom: 2px; }
+    .form-field input, .form-field select, .form-field textarea {
+      width: 100%; padding: 10px; font-size: 14px; border: 2px solid var(--gray-light);
+      border-radius: 6px; font-family: Arial;
+    }
+    .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
+      border-color: var(--green-mid); outline: none;
+    }
+    .form-field.span2 { grid-column: span 2; }
+
+    /* ── Buttons ── */
+    .btn { padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; }
+    .btn-primary { background: var(--green-mid); color: var(--white); }
+    .btn-primary:hover { background: var(--green-light); }
+    .btn-secondary { background: #6c757d; color: var(--white); }
+    .btn-danger { background: #dc3545; color: var(--white); }
+    .btn-block { width: 100%; }
+    .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+
+    /* ── Scan History ── */
+    .history-list { max-height: 250px; overflow-y: auto; }
+    .hist-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 10px; margin-bottom: 3px; border-radius: 6px; font-size: 12px;
+    }
+    .hist-item.ok { background: var(--green-bg); }
+    .hist-item.fail { background: var(--red-bg); }
+    .hist-item .hid { font-weight: bold; font-family: monospace; }
+    .hist-item .hmsg { font-size: 10px; color: var(--gray-mid); max-width: 60%; text-align: right; }
+
+    /* ── PDF Extract Preview ── */
+    .extract-preview {
+      background: #fffde7; border: 2px solid #ffc107; border-radius: 8px;
+      padding: 12px; margin-bottom: 12px; font-size: 12px;
+    }
+    .extract-preview h4 { color: var(--yellow-text); margin-bottom: 8px; }
+    .extract-preview .raw { 
+      background: #fff; padding: 8px; border-radius: 4px; 
+      max-height: 150px; overflow-y: auto; white-space: pre-wrap;
+      font-family: monospace; font-size: 10px; color: #555;
+      border: 1px solid #eee;
+    }
+
+    /* ── Scan Mode Toggle ── */
+    .mode-toggle {
+      display: flex; background: var(--gray-light); border-radius: 8px;
+      padding: 3px; margin-bottom: 12px;
+    }
+    .mode-toggle button {
+      flex: 1; padding: 8px; border: none; border-radius: 6px;
+      background: none; font-size: 12px; font-weight: bold; cursor: pointer;
+      color: var(--gray-mid);
+    }
+    .mode-toggle button.active { background: var(--green-mid); color: var(--white); }
+
+    /* ── Photo Thumbnails ── */
+    .photo-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+      margin-top: 10px;
+    }
+    .photo-thumb {
+      position: relative; border-radius: 8px; overflow: hidden;
+      aspect-ratio: 1; background: var(--gray-light);
+    }
+    .photo-thumb img {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    .photo-thumb .remove-btn {
+      position: absolute; top: 4px; right: 4px;
+      background: rgba(220,53,69,0.85); color: white;
+      border: none; border-radius: 50%; width: 22px; height: 22px;
+      font-size: 12px; cursor: pointer; line-height: 22px; text-align: center;
+    }
+    .photo-thumb .uploading {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 11px; font-weight: bold;
+    }
+
+    /* ── Sample Info Bar ── */
+    .sample-info {
+      background: var(--green-bg); border: 2px solid var(--green-mid);
+      border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;
+    }
+    .sample-info .sample-id { font-size: 18px; font-weight: bold; color: var(--green-dark); }
+    .sample-info .sample-detail { font-size: 11px; color: var(--gray-mid); margin-top: 3px; }
+    .sample-info .existing-photos { font-size: 11px; color: var(--blue); margin-top: 4px; }
+
+    /* ── Camera Capture Button ── */
+    .capture-area {
+      border: 3px dashed var(--green-mid); border-radius: var(--radius);
+      padding: 30px 20px; text-align: center; background: var(--green-bg);
+      cursor: pointer; transition: all 0.3s; margin-bottom: 12px;
+    }
+    .capture-area .icon { font-size: 48px; margin-bottom: 8px; }
+    .capture-area .label { font-size: 14px; color: var(--green-mid); font-weight: bold; }
+    .capture-area .sublabel { font-size: 11px; color: var(--gray-mid); margin-top: 4px; }
+    .capture-area input[type="file"] { display: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 400px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .form-field.span2 { grid-column: span 1; }
+      .photo-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>COMMODITY SAMPLER SERVICES</h1>
+    <div class="tag">"Integrity Through Independence" — CSS V3</div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- TAB: SCAN (QR / Barcode scanner) -->
+  <!-- ============================================================ -->
+  <div id="tab-scan" class="tab-panel active">
+    <div class="scan-counter">Scanned: <span id="scanCount">0</span></div>
+    <div id="scanStatus" class="status-bar ready">📷 Ready to scan</div>
+
+    <!-- Mode Toggle -->
+    <div class="mode-toggle">
+      <button class="active" onclick="setScanMode('receive')" id="modeReceive">📥 Receive</button>
+      <button onclick="setScanMode('ship')" id="modeShip">📦 Ship</button>
+      <button onclick="setScanMode('lookup')" id="modeLookup">🔍 Lookup</button>
+    </div>
+
+    <!-- QR Scanner -->
+    <div class="card" id="scannerCard">
+      <div id="qr-reader"></div>
+    </div>
+
+    <!-- Shipping: tracking number input (hidden unless Ship mode) -->
+    <div class="card" id="shipTrackingCard" style="display:none;">
+      <h3>📦 Tracking Number</h3>
+      <div class="input-group">
+        <input type="text" id="trackingInput" placeholder="Enter tracking #" autocomplete="off">
+      </div>
+    </div>
+
+    <!-- Manual fallback -->
+    <div class="card">
+      <h3>Or type / paste:</h3>
+      <div class="input-group">
+        <input type="text" id="manualScanInput" placeholder="CS Sample #" autocomplete="off"
+               onkeypress="if(event.key==='Enter') doManualScan();">
+        <button class="go-btn" onclick="doManualScan()">GO</button>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="card" id="scanHistoryCard" style="display:none;">
+      <h3>📋 Scan History</h3>
+      <div class="history-list" id="scanHistory"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="clearScanHistory()" style="flex:1">Clear</button>
+      <button class="btn btn-danger" onclick="stopScanner()" style="flex:1">Stop Camera</button>
+      <button class="btn btn-primary" onclick="startScanner()" style="flex:1">Start Camera</button>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- TAB: PHOTOS -->
+  <!-- ============================================================ -->
+  <div id="tab-photos" class="tab-panel">
+    <div id="photoStatus" class="status-bar ready">📸 Scan or enter sample # to add photos</div>
+
+    <!-- Sample ID input -->
+    <div class="card">
+      <h3>📸 Sample Photos</h3>
+      <div class="input-group">
+        <input type="text" id="photoSampleInput" placeholder="CS Sample # (e.g. 211657-05)" autocomplete="off"
+               onkeypress="if(event.key==='Enter') loadSampleForPhoto();">
+        <button class="go-btn" onclick="loadSampleForPhoto()">GO</button>
+      </div>
+      <div style="text-align:center;margin-top:6px;">
+        <button class="btn btn-secondary" onclick="startPhotoScanner()" style="font-size:12px;padding:8px 14px;">
+          📷 Scan Barcode Instead
+        </button>
+      </div>
+      <div id="photo-qr-reader" style="display:none;margin-top:10px;"></div>
+    </div>
+
+    <!-- Sample info (shown after lookup) -->
+    <div id="photoSampleInfo" style="display:none;"></div>
+
+    <!-- Camera capture -->
+    <div id="photoCaptureArea" style="display:none;">
+      <div class="capture-area" onclick="document.getElementById('photoCameraInput').click();">
+        <div class="icon">📸</div>
+        <div class="label">Tap to Take Photo</div>
+        <div class="sublabel">or choose from gallery</div>
+        <input type="file" id="photoCameraInput" accept="image/*" capture="environment"
+               onchange="handlePhotoCapture(event);" multiple>
+      </div>
+
+      <!-- Pending photos -->
+      <div class="card" id="pendingPhotosCard" style="display:none;">
+        <h3>📎 Photos to Upload (<span id="pendingCount">0</span>)</h3>
+        <div class="photo-grid" id="pendingPhotos"></div>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-block" onclick="uploadAllPhotos()">
+            📤 Upload All Photos
+          </button>
+        </div>
+      </div>
+
+      <!-- Existing photos -->
+      <div class="card" id="existingPhotosCard" style="display:none;">
+        <h3>📂 Existing Photos</h3>
+        <div class="photo-grid" id="existingPhotos"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- TAB: DROP (Drag & Drop PDF) -->
+  <!-- ============================================================ -->
+  <div id="tab-drop" class="tab-panel">
+    <div id="dropStatus" class="status-bar ready">📄 Drop a PDF to extract order data</div>
+
+    <div class="drop-zone" id="dropZone"
+         ondragover="event.preventDefault(); this.classList.add('dragover');"
+         ondragleave="this.classList.remove('dragover');"
+         ondrop="handleDrop(event);"
+         onclick="document.getElementById('fileInput').click();">
+      <div class="icon">📄</div>
+      <div class="label">Drag & Drop PDF Here</div>
+      <div class="sublabel">or tap to browse files</div>
+      <input type="file" id="fileInput" accept=".pdf" onchange="handleFileSelect(event);">
+    </div>
+
+    <div id="extractPreview" style="display:none;"></div>
+    <div id="extractedOrderForm" style="display:none;"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- TAB: MANUAL ORDER ENTRY -->
+  <!-- ============================================================ -->
+  <div id="tab-entry" class="tab-panel">
+    <div id="entryStatus" class="status-bar ready">✍️ Enter order details</div>
+
+    <div class="card">
+      <h3>📋 New Sample Order</h3>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Sender / Client</label>
+          <select id="entrySender">
+            <option value="">— Select —</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Receiver</label>
+          <select id="entryReceiver">
+            <option value="">— Select —</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Warehouse</label>
+          <select id="entryWarehouse">
+            <option value="">— Select —</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Sample Order #</label>
+          <input type="text" id="entryOrderNum" placeholder="Order #">
+        </div>
+        <div class="form-field">
+          <label>Container #</label>
+          <input type="text" id="entryContainer" placeholder="XXXX1234567" style="text-transform:uppercase;">
+        </div>
+        <div class="form-field">
+          <label>Cargo #</label>
+          <input type="text" id="entryCargo" placeholder="Cargo #">
+        </div>
+        <div class="form-field">
+          <label>Mark / ICO #</label>
+          <input type="text" id="entryMark" placeholder="e.g. 002/1234/5678">
+        </div>
+        <div class="form-field">
+          <label>Reference</label>
+          <input type="text" id="entryReference" placeholder="Reference">
+        </div>
+        <div class="form-field span2">
+          <label>Description</label>
+          <input type="text" id="entryDescription" placeholder="Origin / coffee description">
+        </div>
+        <div class="form-field">
+          <label>Bag Count</label>
+          <input type="number" id="entryBags" placeholder="0">
+        </div>
+        <div class="form-field">
+          <label>Sample Weight</label>
+          <input type="text" id="entryWeight" placeholder="e.g. 2 lbs">
+        </div>
+        <div class="form-field span2">
+          <label>Comments</label>
+          <textarea id="entryComments" rows="2" placeholder="Any special instructions..."></textarea>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-block" onclick="submitManualOrder()">📤 Submit Order</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary btn-block" onclick="clearEntryForm()">Clear Form</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- TAB: LOOKUP -->
+  <!-- ============================================================ -->
+  <div id="tab-info" class="tab-panel">
+    <div class="card">
+      <h3>🔍 Order Lookup</h3>
+      <div class="input-group">
+        <input type="text" id="lookupInput" placeholder="CS Sample # or scan..."
+               onkeypress="if(event.key==='Enter') doLookup();">
+        <button class="go-btn" onclick="doLookup()">Search</button>
+      </div>
+    </div>
+    <div id="lookupResult"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- Bottom Tab Bar -->
+  <!-- ============================================================ -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('scan')" id="tabBtnScan">
+      <span class="icon">📷</span>Scan
+    </button>
+    <button class="tab-btn" onclick="switchTab('photos')" id="tabBtnPhotos">
+      <span class="icon">📸</span>Photos
+    </button>
+    <button class="tab-btn" onclick="switchTab('drop')" id="tabBtnDrop">
+      <span class="icon">📄</span>PDF
+    </button>
+    <button class="tab-btn" onclick="switchTab('entry')" id="tabBtnEntry">
+      <span class="icon">✍️</span>Manual
+    </button>
+    <button class="tab-btn" onclick="switchTab('info')" id="tabBtnInfo">
+      <span class="icon">🔍</span>Lookup
+    </button>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- JAVASCRIPT -->
+  <!-- ============================================================ -->
+  <script>
+    // ── State ──
+    var scanCount = 0;
+    var scanMode = 'receive';
+    var html5QrCode = null;
+    var photoQrCode = null;
+    var isScanning = false;
+    var isPhotoScanning = false;
+    var lastScan = '';
+    var lastScanTime = 0;
+
+    // Photo state
+    var currentPhotoSample = null;    // { csSample, sender, description, ... }
+    var pendingPhotos = [];           // [{ dataUrl, blob, fileName }]
+
+    // ── Tab Switching ──
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+      document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.getElementById('tab-' + tab).classList.add('active');
+      document.getElementById('tabBtn' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+
+      if (tab !== 'scan' && isScanning) stopScanner();
+      if (tab !== 'photos' && isPhotoScanning) stopPhotoScanner();
+      if (tab === 'scan' && !isScanning) setTimeout(startScanner, 300);
+    }
+
+    // ── Scan Mode ──
+    function setScanMode(mode) {
+      scanMode = mode;
+      document.querySelectorAll('.mode-toggle button').forEach(function(b) { b.classList.remove('active'); });
+      if (mode === 'receive') {
+        document.getElementById('modeReceive').classList.add('active');
+        document.getElementById('shipTrackingCard').style.display = 'none';
+        setStatusBar('scanStatus', 'ready', '📥 Scan to mark as Received');
+      } else if (mode === 'ship') {
+        document.getElementById('modeShip').classList.add('active');
+        document.getElementById('shipTrackingCard').style.display = 'block';
+        setStatusBar('scanStatus', 'ready', '📦 Scan sample, then enter tracking #');
+      } else {
+        document.getElementById('modeLookup').classList.add('active');
+        document.getElementById('shipTrackingCard').style.display = 'none';
+        setStatusBar('scanStatus', 'ready', '🔍 Scan to look up order details');
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // QR SCANNER — FIX: formatsToSupport goes in constructor
+    // ══════════════════════════════════════════════════════════════
+
+    var BARCODE_FORMATS = [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.CODABAR
+    ];
+
+    function startScanner() {
+      if (isScanning) return;
+
+      // FIX: Pass formatsToSupport in the constructor, NOT in start() config
+      html5QrCode = new Html5Qrcode("qr-reader", {
+        formatsToSupport: BARCODE_FORMATS,
+        verbose: false
+      });
+
+      var scanConfig = {
+        fps: 10,
+        qrbox: { width: 250, height: 150 },
+        aspectRatio: 1.333
+      };
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        scanConfig,
+        onScanSuccess,
+        function() { /* ignore scan failures */ }
+      ).then(function() {
+        isScanning = true;
+        setStatusBar('scanStatus', 'ready', '📷 Camera active — point at barcode');
+      }).catch(function(err) {
+        console.log('Camera error:', err);
+        setStatusBar('scanStatus', 'error', '📷 Camera not available — use manual entry');
+      });
+    }
+
+    function stopScanner() {
+      if (html5QrCode && isScanning) {
+        html5QrCode.stop().then(function() {
+          isScanning = false;
+          html5QrCode.clear();
+        }).catch(function(err) {
+          console.log('Stop error:', err);
+          isScanning = false;
+        });
+      }
+    }
+
+    function onScanSuccess(decodedText, decodedResult) {
+      var now = Date.now();
+      if (decodedText === lastScan && (now - lastScanTime) < 3000) return;
+      lastScan = decodedText;
+      lastScanTime = now;
+      if (navigator.vibrate) navigator.vibrate(100);
+      processScanResult(decodedText);
+    }
+
+    function doManualScan() {
+      var input = document.getElementById('manualScanInput');
+      var val = input.value.trim();
+      if (!val) return;
+      processScanResult(val);
+      input.value = '';
+      input.focus();
+    }
+
+    function processScanResult(code) {
+      setStatusBar('scanStatus', 'working', '⏳ Processing ' + code + '...');
+
+      if (scanMode === 'receive') {
+        google.script.run
+          .withSuccessHandler(function(r) {
+            if (r.success) {
+              scanCount++;
+              document.getElementById('scanCount').textContent = scanCount;
+              setStatusBar('scanStatus', 'success', r.message);
+              addScanHistory(code, true, r.message);
+            } else {
+              setStatusBar('scanStatus', 'error', r.message);
+              addScanHistory(code, false, r.message);
+            }
+          })
+          .withFailureHandler(function(e) {
+            setStatusBar('scanStatus', 'error', '❌ ' + e.message);
+            addScanHistory(code, false, e.message);
+          })
+          .scanSampleBarcode(code);
+
+      } else if (scanMode === 'ship') {
+        var tracking = document.getElementById('trackingInput').value.trim();
+        if (!tracking) {
+          setStatusBar('scanStatus', 'error', '⚠️ Enter tracking number first!');
+          document.getElementById('trackingInput').focus();
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(function(r) {
+            if (r.success) {
+              scanCount++;
+              document.getElementById('scanCount').textContent = scanCount;
+              setStatusBar('scanStatus', 'success', r.message);
+              addScanHistory(code, true, r.message);
+            } else {
+              setStatusBar('scanStatus', 'error', r.message);
+              addScanHistory(code, false, r.message);
+            }
+          })
+          .withFailureHandler(function(e) {
+            setStatusBar('scanStatus', 'error', '❌ ' + e.message);
+            addScanHistory(code, false, e.message);
+          })
+          .webAppShipSample(code, tracking);
+
+      } else if (scanMode === 'lookup') {
+        google.script.run
+          .withSuccessHandler(function(r) {
+            if (r.success && r.type === 'found') {
+              setStatusBar('scanStatus', 'success', r.message);
+              addScanHistory(code, true, r.message);
+              showLookupResult(r.data);
+            } else if (r.success && r.type === 'parsed_qr') {
+              setStatusBar('scanStatus', 'success', r.message);
+              addScanHistory(code, true, 'QR data parsed');
+              showParsedQR(r.data);
+            } else {
+              setStatusBar('scanStatus', 'error', r.message);
+              addScanHistory(code, false, r.message);
+            }
+          })
+          .withFailureHandler(function(e) {
+            setStatusBar('scanStatus', 'error', '❌ ' + e.message);
+            addScanHistory(code, false, e.message);
+          })
+          .webAppProcessQR(code);
+      }
+    }
+
+    // ── Scan History ──
+    function addScanHistory(id, ok, msg) {
+      document.getElementById('scanHistoryCard').style.display = 'block';
+      var list = document.getElementById('scanHistory');
+      var time = new Date().toLocaleTimeString();
+      var div = document.createElement('div');
+      div.className = 'hist-item ' + (ok ? 'ok' : 'fail');
+      div.innerHTML = '<span class="hid">' + (ok ? '✅' : '❌') + ' ' + id + '</span>' +
+                      '<span class="hmsg">' + time + '</span>';
+      list.insertBefore(div, list.firstChild);
+    }
+
+    function clearScanHistory() {
+      scanCount = 0;
+      document.getElementById('scanCount').textContent = '0';
+      document.getElementById('scanHistory').innerHTML = '';
+      document.getElementById('scanHistoryCard').style.display = 'none';
+      setStatusBar('scanStatus', 'ready', '📷 Ready to scan');
+    }
+
+    // ── Lookup Result Display ──
+    function showLookupResult(data) {
+      var html = '<div class="card"><h3>📋 ' + (data.csSample || '?') + '</h3><div class="form-grid">';
+      var fields = [
+        ['CS Order', data.csOrder], ['Status', data.status],
+        ['Sender', data.sender], ['Receiver', data.receiver],
+        ['Warehouse', data.warehouse], ['Description', data.description],
+        ['Order #', data.sampleOrderNum], ['Container', data.container],
+        ['Cargo', data.cargo], ['Mark', data.mark],
+        ['Bags', data.bagCount], ['Sample Wt', data.sampleWeight],
+        ['Reference', data.reference], ['Tracking', data.trackingNumber]
+      ];
+      fields.forEach(function(f) {
+        if (f[1]) {
+          html += '<div class="form-field"><label>' + f[0] + '</label>' +
+                  '<div style="padding:6px;background:#f9f9f9;border-radius:4px;font-size:13px;font-weight:bold;">' +
+                  f[1] + '</div></div>';
+        }
+      });
+      html += '</div></div>';
+      document.getElementById('lookupResult').innerHTML = html;
+    }
+
+    function showParsedQR(data) { showLookupResult(data); }
+
+    function doLookup() {
+      var val = document.getElementById('lookupInput').value.trim();
+      if (!val) return;
+      google.script.run
+        .withSuccessHandler(function(r) {
+          if (r.success && r.data) showLookupResult(r.data);
+          else document.getElementById('lookupResult').innerHTML =
+            '<div class="status-bar error">' + (r.message || 'Not found') + '</div>';
+        })
+        .withFailureHandler(function(e) {
+          document.getElementById('lookupResult').innerHTML =
+            '<div class="status-bar error">❌ ' + e.message + '</div>';
+        })
+        .webAppProcessQR(val);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // PHOTOS TAB
+    // ══════════════════════════════════════════════════════════════
+
+    function startPhotoScanner() {
+      if (isPhotoScanning) { stopPhotoScanner(); return; }
+      var el = document.getElementById('photo-qr-reader');
+      el.style.display = 'block';
+
+      photoQrCode = new Html5Qrcode("photo-qr-reader", {
+        formatsToSupport: BARCODE_FORMATS,
+        verbose: false
+      });
+
+      photoQrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.333 },
+        function(decodedText) {
+          if (navigator.vibrate) navigator.vibrate(100);
+          stopPhotoScanner();
+          document.getElementById('photoSampleInput').value = decodedText;
+          loadSampleForPhoto();
+        },
+        function() {}
+      ).then(function() {
+        isPhotoScanning = true;
+      }).catch(function(err) {
+        console.log('Photo scanner error:', err);
+        el.style.display = 'none';
+        setStatusBar('photoStatus', 'error', '📷 Camera not available');
+      });
+    }
+
+    function stopPhotoScanner() {
+      if (photoQrCode && isPhotoScanning) {
+        photoQrCode.stop().then(function() {
+          isPhotoScanning = false;
+          photoQrCode.clear();
+          document.getElementById('photo-qr-reader').style.display = 'none';
+        }).catch(function() { isPhotoScanning = false; });
+      }
+    }
+
+    function loadSampleForPhoto() {
+      var sampleId = document.getElementById('photoSampleInput').value.trim();
+      if (!sampleId) return;
+
+      // Parse QR if pipe-delimited
+      if (sampleId.indexOf('|') !== -1) {
+        var parts = {};
+        sampleId.split('|').forEach(function(p) {
+          var ci = p.indexOf(':');
+          if (ci !== -1) parts[p.substring(0, ci).trim()] = p.substring(ci + 1).trim();
+        });
+        sampleId = parts['CS_SAMPLE'] || sampleId;
+        document.getElementById('photoSampleInput').value = sampleId;
+      }
+
+      setStatusBar('photoStatus', 'working', '⏳ Loading ' + sampleId + '...');
+
+      // Look up sample + existing photos
+      google.script.run
+        .withSuccessHandler(function(r) {
+          if (r.success) {
+            currentPhotoSample = r.data;
+            currentPhotoSample.csSample = sampleId;
+            showSamplePhotoInfo(r.data, r.photos || []);
+            setStatusBar('photoStatus', 'success', '✅ Ready to add photos for ' + sampleId);
+          } else {
+            setStatusBar('photoStatus', 'error', r.message || '❌ Sample not found');
+            document.getElementById('photoSampleInfo').style.display = 'none';
+            document.getElementById('photoCaptureArea').style.display = 'none';
+          }
+        })
+        .withFailureHandler(function(e) {
+          setStatusBar('photoStatus', 'error', '❌ ' + e.message);
+        })
+        .webAppLoadSamplePhotos(sampleId);
+    }
+
+    function showSamplePhotoInfo(data, existingPhotos) {
+      var infoEl = document.getElementById('photoSampleInfo');
+      var html = '<div class="sample-info">' +
+        '<div class="sample-id">📋 ' + (data.csSample || '?') + '</div>' +
+        '<div class="sample-detail">' +
+          (data.sender ? data.sender + ' — ' : '') +
+          (data.description || '') +
+          (data.warehouse ? ' (' + data.warehouse + ')' : '') +
+        '</div>';
+      if (data.photoLinks) {
+        html += '<div class="existing-photos">📎 Photos already linked</div>';
+      }
+      html += '</div>';
+      infoEl.innerHTML = html;
+      infoEl.style.display = 'block';
+
+      // Show capture area
+      document.getElementById('photoCaptureArea').style.display = 'block';
+
+      // Show existing photos
+      if (existingPhotos && existingPhotos.length > 0) {
+        var grid = document.getElementById('existingPhotos');
+        grid.innerHTML = existingPhotos.map(function(p) {
+          return '<div class="photo-thumb">' +
+            '<a href="' + p.url + '" target="_blank">' +
+            '<img src="' + p.thumbnail + '" alt="' + p.name + '">' +
+            '</a></div>';
+        }).join('');
+        document.getElementById('existingPhotosCard').style.display = 'block';
+      } else {
+        document.getElementById('existingPhotosCard').style.display = 'none';
+      }
+
+      // Clear pending
+      pendingPhotos = [];
+      document.getElementById('pendingPhotos').innerHTML = '';
+      document.getElementById('pendingPhotosCard').style.display = 'none';
+    }
+
+    function handlePhotoCapture(event) {
+      var files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      for (var i = 0; i < files.length; i++) {
+        (function(file) {
+          var reader = new FileReader();
+          reader.onload = function(e) {
+            pendingPhotos.push({
+              dataUrl: e.target.result,
+              base64: e.target.result.split(',')[1],
+              fileName: file.name || ('photo_' + Date.now() + '.jpg'),
+              mimeType: file.type || 'image/jpeg'
+            });
+            renderPendingPhotos();
+          };
+          reader.readAsDataURL(file);
+        })(files[i]);
+      }
+
+      // Reset input so same file can be selected again
+      event.target.value = '';
+    }
+
+    function renderPendingPhotos() {
+      var grid = document.getElementById('pendingPhotos');
+      grid.innerHTML = pendingPhotos.map(function(p, idx) {
+        return '<div class="photo-thumb" id="pending-' + idx + '">' +
+          '<img src="' + p.dataUrl + '">' +
+          '<button class="remove-btn" onclick="removePendingPhoto(' + idx + ')">✕</button>' +
+          (p.uploading ? '<div class="uploading">⏳</div>' : '') +
+          '</div>';
+      }).join('');
+      document.getElementById('pendingCount').textContent = pendingPhotos.length;
+      document.getElementById('pendingPhotosCard').style.display = pendingPhotos.length > 0 ? 'block' : 'none';
+    }
+
+    function removePendingPhoto(idx) {
+      pendingPhotos.splice(idx, 1);
+      renderPendingPhotos();
+    }
+
+    function uploadAllPhotos() {
+      if (!currentPhotoSample || !currentPhotoSample.csSample) {
+        setStatusBar('photoStatus', 'error', '⚠️ No sample selected');
+        return;
+      }
+      if (pendingPhotos.length === 0) {
+        setStatusBar('photoStatus', 'error', '⚠️ No photos to upload');
+        return;
+      }
+
+      setStatusBar('photoStatus', 'working', '⏳ Uploading ' + pendingPhotos.length + ' photo(s)...');
+      var sampleId = currentPhotoSample.csSample;
+      var uploaded = 0;
+      var total = pendingPhotos.length;
+
+      pendingPhotos.forEach(function(photo, idx) {
+        photo.uploading = true;
+        renderPendingPhotos();
+
+        google.script.run
+          .withSuccessHandler(function(r) {
+            uploaded++;
+            if (r.success) {
+              photo.uploaded = true;
+              photo.uploading = false;
+            } else {
+              photo.uploading = false;
+              photo.error = r.message;
+            }
+
+            if (uploaded === total) {
+              // All done
+              pendingPhotos = pendingPhotos.filter(function(p) { return !p.uploaded; });
+              renderPendingPhotos();
+              if (pendingPhotos.length === 0) {
+                setStatusBar('photoStatus', 'success', '✅ All ' + total + ' photo(s) uploaded for ' + sampleId);
+              } else {
+                setStatusBar('photoStatus', 'error', '⚠️ Some photos failed — tap Upload to retry');
+              }
+              // Refresh existing photos
+              loadSampleForPhoto();
+            } else {
+              setStatusBar('photoStatus', 'working', '⏳ Uploaded ' + uploaded + '/' + total + '...');
+            }
+          })
+          .withFailureHandler(function(e) {
+            uploaded++;
+            photo.uploading = false;
+            photo.error = e.message;
+            renderPendingPhotos();
+            if (uploaded === total) {
+              setStatusBar('photoStatus', 'error', '⚠️ Some uploads failed');
+            }
+          })
+          .webAppUploadPhoto(sampleId, photo.base64, photo.fileName, photo.mimeType);
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // DRAG & DROP PDF
+    // ══════════════════════════════════════════════════════════════
+
+    function handleDrop(event) {
+      event.preventDefault(); event.stopPropagation();
+      document.getElementById('dropZone').classList.remove('dragover');
+      if (event.dataTransfer.files.length > 0) processFile(event.dataTransfer.files[0]);
+    }
+
+    function handleFileSelect(event) {
+      if (event.target.files.length > 0) processFile(event.target.files[0]);
+    }
+
+    function processFile(file) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        setStatusBar('dropStatus', 'error', '⚠️ Only PDF files are supported'); return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setStatusBar('dropStatus', 'error', '⚠️ File too large (max 10MB)'); return;
+      }
+      setStatusBar('dropStatus', 'working', '⏳ Processing ' + file.name + '...');
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var base64 = e.target.result.split(',')[1];
+        google.script.run
+          .withSuccessHandler(function(r) {
+            if (r.success && r.type === 'pdf_parsed') {
+              setStatusBar('dropStatus', 'success', r.message);
+              showExtractedData(r.extracted, r.rawText);
+            } else {
+              setStatusBar('dropStatus', 'error', r.message || 'Could not parse PDF');
+            }
+          })
+          .withFailureHandler(function(e) {
+            setStatusBar('dropStatus', 'error', '❌ ' + e.message);
+          })
+          .webAppProcessPDF(base64, file.name);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function showExtractedData(samples, rawText) {
+      var previewEl = document.getElementById('extractPreview');
+      var formEl = document.getElementById('extractedOrderForm');
+      previewEl.innerHTML = '<div class="extract-preview"><h4>📄 Extracted Text</h4>' +
+        '<div class="raw">' + (rawText || 'No text').replace(/</g, '&lt;') + '</div></div>';
+      previewEl.style.display = 'block';
+
+      if (samples && samples.length > 0) {
+        var s = samples[0];
+        var formHtml = '<div class="card"><h3>✏️ Review & Submit</h3><div class="form-grid">';
+        [['Sender','dropSender',s.sender],['Warehouse','dropWarehouse',s.warehouse],
+         ['Order #','dropOrderNum',s.sampleOrderNum],['Container','dropContainer',s.container],
+         ['Cargo','dropCargo',s.cargo],['Mark','dropMark',s.mark],
+         ['Description','dropDesc',s.description],['Bag Count','dropBags',s.bagCount],
+         ['Sample Weight','dropWeight',s.sampleWeight],['Reference','dropRef',s.reference]
+        ].forEach(function(f) {
+          formHtml += '<div class="form-field"><label>' + f[0] + '</label>' +
+            '<input type="text" id="' + f[1] + '" value="' + (f[2]||'').replace(/"/g,'&quot;') + '"></div>';
+        });
+        formHtml += '</div><div class="btn-row">' +
+          '<button class="btn btn-primary btn-block" onclick="submitDroppedOrder()">📤 Submit Order</button></div></div>';
+        formEl.innerHTML = formHtml;
+        formEl.style.display = 'block';
+      }
+    }
+
+    function submitDroppedOrder() {
+      setStatusBar('dropStatus', 'working', '⏳ Submitting...');
+      var orderData = {
+        sender: document.getElementById('dropSender').value.trim(),
+        warehouse: document.getElementById('dropWarehouse').value.trim(),
+        sampleOrderNum: document.getElementById('dropOrderNum').value.trim(),
+        container: document.getElementById('dropContainer').value.trim().toUpperCase(),
+        cargo: document.getElementById('dropCargo').value.trim(),
+        mark: document.getElementById('dropMark').value.trim(),
+        description: document.getElementById('dropDesc').value.trim(),
+        bagCount: document.getElementById('dropBags').value.trim(),
+        sampleWeight: document.getElementById('dropWeight').value.trim(),
+        reference: document.getElementById('dropRef').value.trim(),
+        comments: 'Entered via Web App (PDF drop)'
+      };
+      google.script.run
+        .withSuccessHandler(function(r) {
+          if (r.success) {
+            setStatusBar('dropStatus', 'success', r.message);
+            document.getElementById('extractedOrderForm').innerHTML =
+              '<div class="status-bar success">✅ Order submitted!</div>';
+          } else setStatusBar('dropStatus', 'error', r.message);
+        })
+        .withFailureHandler(function(e) { setStatusBar('dropStatus', 'error', '❌ ' + e.message); })
+        .webAppSubmitOrder(orderData);
+    }
+
+    // ── Manual Order Entry ──
+    function submitManualOrder() {
+      setStatusBar('entryStatus', 'working', '⏳ Submitting...');
+      var senderVal = document.getElementById('entrySender').value;
+      if (senderVal === '_other_') senderVal = prompt('Enter sender/client name:') || '';
+      var receiverVal = document.getElementById('entryReceiver').value;
+      if (receiverVal === '_other_') receiverVal = prompt('Enter receiver name:') || '';
+      var warehouseVal = document.getElementById('entryWarehouse').value;
+      if (warehouseVal === '_other_') warehouseVal = prompt('Enter warehouse name:') || '';
+
+      var orderData = {
+        sender: senderVal, receiver: receiverVal, warehouse: warehouseVal,
+        sampleOrderNum: document.getElementById('entryOrderNum').value.trim(),
+        container: document.getElementById('entryContainer').value.trim().toUpperCase(),
+        cargo: document.getElementById('entryCargo').value.trim(),
+        mark: document.getElementById('entryMark').value.trim(),
+        reference: document.getElementById('entryReference').value.trim(),
+        description: document.getElementById('entryDescription').value.trim(),
+        bagCount: document.getElementById('entryBags').value.trim(),
+        sampleWeight: document.getElementById('entryWeight').value.trim(),
+        comments: document.getElementById('entryComments').value.trim() || 'Entered via Web App'
+      };
+
+      if (!orderData.sender && !orderData.sampleOrderNum && !orderData.container) {
+        setStatusBar('entryStatus', 'error', '⚠️ Need at least sender, order #, or container #'); return;
+      }
+
+      google.script.run
+        .withSuccessHandler(function(r) {
+          if (r.success) setStatusBar('entryStatus', 'success', r.message);
+          else setStatusBar('entryStatus', 'error', r.message);
+        })
+        .withFailureHandler(function(e) { setStatusBar('entryStatus', 'error', '❌ ' + e.message); })
+        .webAppSubmitOrder(orderData);
+    }
+
+    function clearEntryForm() {
+      ['entryOrderNum','entryContainer','entryCargo','entryMark','entryReference',
+       'entryDescription','entryBags','entryWeight','entryComments'].forEach(function(id) {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('entrySender').selectedIndex = 0;
+      document.getElementById('entryReceiver').selectedIndex = 0;
+      document.getElementById('entryWarehouse').selectedIndex = 0;
+      setStatusBar('entryStatus', 'ready', '✍️ Form cleared');
+    }
+
+    // ── Utility ──
+    function setStatusBar(elId, cls, msg) {
+      var el = document.getElementById(elId);
+      el.className = 'status-bar ' + cls;
+      el.textContent = msg;
+    }
+
+    // ── Initialize Dropdowns ──
+    function loadFormData() {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          var senderEl = document.getElementById('entrySender');
+          if (data.shippers && data.shippers.length > 0) {
+            data.shippers.forEach(function(s) {
+              var opt = document.createElement('option');
+              opt.value = s.company; opt.textContent = s.company;
+              senderEl.appendChild(opt);
+            });
+          } else if (data.customers) {
+            data.customers.forEach(function(c) {
+              if (c.key === 'other') return;
+              var opt = document.createElement('option');
+              opt.value = c.name; opt.textContent = c.name;
+              senderEl.appendChild(opt);
+            });
+          }
+          senderEl.appendChild(Object.assign(document.createElement('option'), {value:'_other_',textContent:'— Other —'}));
+
+          var recvEl = document.getElementById('entryReceiver');
+          if (data.receivers && data.receivers.length > 0) {
+            data.receivers.forEach(function(r) {
+              var opt = document.createElement('option');
+              opt.value = r.company; opt.textContent = r.company;
+              recvEl.appendChild(opt);
+            });
+          }
+          recvEl.appendChild(Object.assign(document.createElement('option'), {value:'_other_',textContent:'— Other —'}));
+
+          var whEl = document.getElementById('entryWarehouse');
+          if (data.warehouses) {
+            data.warehouses.forEach(function(w) {
+              if (w.key === 'other') return;
+              var opt = document.createElement('option');
+              opt.value = w.name; opt.textContent = w.name;
+              whEl.appendChild(opt);
+            });
+          }
+          whEl.appendChild(Object.assign(document.createElement('option'), {value:'_other_',textContent:'— Other —'}));
+        })
+        .withFailureHandler(function(e) { console.log('Form data error:', e); })
+        .webAppGetFormData();
+    }
+
+    // ── Startup ──
+    window.onload = function() {
+      loadFormData();
+      setTimeout(startScanner, 500);
+    };
+  </script>
+</body>
+</html>

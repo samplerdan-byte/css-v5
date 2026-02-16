@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <style>
+    :root {
+      --green-dark: #1a3a25;
+      --green-mid: #2E5339;
+      --green-light: #4A7C59;
+      --green-bg: #e8f5e9;
+      --green-accent: #8cc99e;
+      --white: #fff;
+      --gray-bg: #f7f8fa;
+      --gray-light: #eee;
+      --gray-mid: #888;
+      --gray-dark: #333;
+      --yellow: #f59e0b;
+      --blue: #2563eb;
+      --radius: 10px;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: var(--gray-bg); min-height: 100vh; color: var(--gray-dark); }
+
+    /* ── Header ── */
+    .portal-header {
+      background: linear-gradient(135deg, var(--green-dark) 0%, var(--green-mid) 100%);
+      color: var(--white); padding: 24px 20px 20px; text-align: center;
+    }
+    .portal-header h1 { font-size: 18px; letter-spacing: 2px; margin-bottom: 4px; }
+    .portal-header .tagline { font-size: 10px; color: var(--green-accent); font-style: italic; letter-spacing: 1px; }
+    .portal-header .welcome {
+      margin-top: 14px; font-size: 14px; font-weight: 600;
+      background: rgba(255,255,255,0.12); display: inline-block;
+      padding: 6px 18px; border-radius: 20px;
+    }
+
+    /* ── Container ── */
+    .container { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+    /* ── Stats Row ── */
+    .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    .stat-card {
+      background: var(--white); border-radius: var(--radius); padding: 14px 10px;
+      text-align: center; box-shadow: var(--shadow);
+    }
+    .stat-card .num { font-size: 28px; font-weight: 800; color: var(--green-mid); line-height: 1; }
+    .stat-card .lbl { font-size: 10px; color: var(--gray-mid); text-transform: uppercase; margin-top: 4px; letter-spacing: 0.5px; }
+
+    /* ── Search / Filter ── */
+    .filter-bar {
+      background: var(--white); border-radius: var(--radius); padding: 12px;
+      margin-bottom: 16px; box-shadow: var(--shadow);
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    }
+    .filter-bar input {
+      flex: 1; min-width: 150px; padding: 10px 14px; font-size: 14px;
+      border: 2px solid var(--gray-light); border-radius: 8px;
+    }
+    .filter-bar input:focus { border-color: var(--green-mid); outline: none; }
+    .filter-bar select {
+      padding: 10px; font-size: 13px; border: 2px solid var(--gray-light);
+      border-radius: 8px; background: var(--white);
+    }
+    .filter-bar select:focus { border-color: var(--green-mid); outline: none; }
+
+    /* ── Order Cards ── */
+    .order-card {
+      background: var(--white); border-radius: var(--radius); padding: 16px;
+      margin-bottom: 10px; box-shadow: var(--shadow);
+      border-left: 4px solid var(--gray-light);
+      transition: transform 0.15s;
+      cursor: pointer;
+    }
+    .order-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .order-card.status-received { border-left-color: var(--yellow); }
+    .order-card.status-scanned { border-left-color: var(--blue); }
+    .order-card.status-shipped, .order-card.status-completed { border-left-color: var(--green-mid); }
+
+    .order-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .order-id { font-size: 15px; font-weight: 700; color: var(--green-dark); }
+    .order-ref { font-size: 11px; color: var(--gray-mid); margin-top: 2px; }
+
+    .status-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 12px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+    .badge-received { background: #fef3c7; color: #92400e; }
+    .badge-scanned { background: #dbeafe; color: #1e40af; }
+    .badge-shipped { background: #d1fae5; color: #065f46; }
+    .badge-completed { background: #d1fae5; color: #065f46; }
+
+    .order-details { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+    .order-field { font-size: 12px; }
+    .order-field .fl { color: var(--gray-mid); }
+    .order-field .fv { font-weight: 600; }
+
+    .tracking-link {
+      display: inline-block; margin-top: 8px; padding: 5px 12px;
+      background: var(--green-bg); color: var(--green-mid); border-radius: 6px;
+      font-size: 11px; font-weight: 600; text-decoration: none;
+    }
+    .tracking-link:hover { background: #c8e6c9; }
+
+    /* ── Expanded Detail ── */
+    .order-expanded {
+      display: none; margin-top: 12px; padding-top: 12px;
+      border-top: 1px solid var(--gray-light);
+    }
+    .order-card.open .order-expanded { display: block; }
+
+    /* ── Loading / Auth States ── */
+    .loading-screen {
+      text-align: center; padding: 80px 20px;
+    }
+    .loading-screen .spinner {
+      width: 40px; height: 40px; border: 4px solid var(--gray-light);
+      border-top-color: var(--green-mid); border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .auth-error {
+      text-align: center; padding: 80px 20px;
+    }
+    .auth-error .lock { font-size: 48px; margin-bottom: 12px; }
+    .auth-error h2 { color: var(--green-dark); margin-bottom: 8px; }
+    .auth-error p { color: var(--gray-mid); font-size: 14px; }
+
+    /* ── Empty State ── */
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: var(--gray-mid);
+    }
+    .empty-state .icon { font-size: 40px; margin-bottom: 10px; }
+
+    /* ── Footer ── */
+    .portal-footer {
+      text-align: center; padding: 24px; color: var(--gray-mid); font-size: 11px;
+    }
+    .portal-footer a { color: var(--green-mid); text-decoration: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .order-details { grid-template-columns: 1fr; }
+      .filter-bar { flex-direction: column; }
+      .filter-bar input, .filter-bar select { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Auth Error (hidden by default) -->
+  <div id="authError" style="display:none;">
+    <div class="portal-header">
+      <h1>COMMODITY SAMPLER SERVICES</h1>
+      <div class="tagline">"Integrity Through Independence"</div>
+    </div>
+    <div class="auth-error">
+      <div class="lock">🔒</div>
+      <h2>Access Required</h2>
+      <p>This portal requires a valid access link.<br>Please contact CSS for your unique portal URL.</p>
+      <p style="margin-top:20px;font-size:12px;color:#aaa;">If you believe this is an error, your link may have expired.</p>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loadingScreen">
+    <div class="portal-header">
+      <h1>COMMODITY SAMPLER SERVICES</h1>
+      <div class="tagline">"Integrity Through Independence"</div>
+    </div>
+    <div class="loading-screen">
+      <div class="spinner"></div>
+      <p style="color:var(--gray-mid);">Loading your orders...</p>
+    </div>
+  </div>
+
+  <!-- Main Portal (hidden until data loads) -->
+  <div id="portalMain" style="display:none;">
+    <div class="portal-header">
+      <h1>COMMODITY SAMPLER SERVICES</h1>
+      <div class="tagline">"Integrity Through Independence"</div>
+      <div class="welcome" id="welcomeBanner">Welcome</div>
+    </div>
+
+    <div class="container">
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="num" id="statTotal">0</div>
+          <div class="lbl">Total Orders</div>
+        </div>
+        <div class="stat-card">
+          <div class="num" id="statReceived" style="color:#f59e0b;">0</div>
+          <div class="lbl">Received</div>
+        </div>
+        <div class="stat-card">
+          <div class="num" id="statScanned" style="color:#2563eb;">0</div>
+          <div class="lbl">In Progress</div>
+        </div>
+        <div class="stat-card">
+          <div class="num" id="statShipped" style="color:#059669;">0</div>
+          <div class="lbl">Shipped</div>
+        </div>
+      </div>
+
+      <!-- Search & Filter -->
+      <div class="filter-bar">
+        <input type="text" id="searchInput" placeholder="Search orders..." oninput="filterOrders();">
+        <select id="statusFilter" onchange="filterOrders();">
+          <option value="">All Status</option>
+          <option value="Received">Received</option>
+          <option value="Scanned">In Progress</option>
+          <option value="Shipped">Shipped</option>
+          <option value="Completed">Completed</option>
+        </select>
+      </div>
+
+      <!-- Order List -->
+      <div id="orderList"></div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="empty-state" style="display:none;">
+        <div class="icon">📭</div>
+        <p>No orders match your search.</p>
+      </div>
+    </div>
+
+    <div class="portal-footer">
+      Commodity Sampler Services &middot; <a href="mailto:info@commoditysampler.com">Contact Us</a><br>
+      Last refreshed: <span id="refreshTime"></span>
+      &middot; <a href="#" onclick="loadData(); return false;">↻ Refresh</a>
+    </div>
+  </div>
+
+  <script>
+    var allOrders = [];
+    var portalToken = '';
+
+    // ── Extract token from URL ──
+    function getToken() {
+      // google.script.url is only available in web apps
+      // Token is passed server-side via template, or we parse from URL hash/param
+      // For GAS web apps, we use google.script.url.getLocation()
+      return new Promise(function(resolve) {
+        if (typeof google !== 'undefined' && google.script && google.script.url) {
+          google.script.url.getLocation(function(loc) {
+            resolve(loc.parameter.token || '');
+          });
+        } else {
+          // Fallback: parse from window.location
+          var params = new URLSearchParams(window.location.search);
+          resolve(params.get('token') || '');
+        }
+      });
+    }
+
+    // ── Load Data ──
+    function loadData() {
+      document.getElementById('loadingScreen').style.display = 'block';
+      document.getElementById('portalMain').style.display = 'none';
+      document.getElementById('authError').style.display = 'none';
+
+      getToken().then(function(token) {
+        portalToken = token;
+        if (!token) {
+          showAuthError();
+          return;
+        }
+
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (!result || !result.success) {
+              showAuthError();
+              return;
+            }
+            showPortal(result);
+          })
+          .withFailureHandler(function(err) {
+            showAuthError();
+          })
+          .getPortalData(token);
+      });
+    }
+
+    function showAuthError() {
+      document.getElementById('loadingScreen').style.display = 'none';
+      document.getElementById('portalMain').style.display = 'none';
+      document.getElementById('authError').style.display = 'block';
+    }
+
+    function showPortal(data) {
+      document.getElementById('loadingScreen').style.display = 'none';
+      document.getElementById('authError').style.display = 'none';
+      document.getElementById('portalMain').style.display = 'block';
+
+      // Welcome banner
+      document.getElementById('welcomeBanner').textContent = data.customerName;
+
+      // Stats
+      document.getElementById('statTotal').textContent = data.stats.total;
+      document.getElementById('statReceived').textContent = data.stats.received;
+      document.getElementById('statScanned').textContent = data.stats.scanned;
+      document.getElementById('statShipped').textContent = data.stats.shipped;
+
+      // Store orders for filtering
+      allOrders = data.orders || [];
+
+      // Render
+      renderOrders(allOrders);
+
+      // Refresh timestamp
+      document.getElementById('refreshTime').textContent = new Date().toLocaleString();
+    }
+
+    // ── Render Orders ──
+    function renderOrders(orders) {
+      var list = document.getElementById('orderList');
+      var empty = document.getElementById('emptyState');
+
+      if (orders.length === 0) {
+        list.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+
+      var html = '';
+      orders.forEach(function(o, idx) {
+        var statusLower = (o.status || '').toLowerCase();
+        var badgeClass = 'badge-' + statusLower;
+        var statusLabel = o.status || 'Unknown';
+        if (statusLower === 'scanned') statusLabel = 'In Progress';
+
+        html += '<div class="order-card status-' + statusLower + '" onclick="toggleCard(this)" data-idx="' + idx + '">';
+
+        // Top row
+        html += '<div class="order-top">';
+        html += '<div><div class="order-id">' + esc(o.csSample || o.csOrder || '—') + '</div>';
+        if (o.sampleOrderNum) html += '<div class="order-ref">Order: ' + esc(o.sampleOrderNum) + '</div>';
+        html += '</div>';
+        html += '<span class="status-badge ' + badgeClass + '">' + statusLabel + '</span>';
+        html += '</div>';
+
+        // Summary fields
+        html += '<div class="order-details">';
+        if (o.description) html += field('Description', o.description);
+        if (o.container) html += field('Container', o.container);
+        if (o.receiver) html += field('Ship To', o.receiver);
+        if (o.warehouse) html += field('Warehouse', o.warehouse);
+        html += '</div>';
+
+        // Tracking link
+        if (o.trackingNumber) {
+          if (o.trackingUrl) {
+            html += '<a class="tracking-link" href="' + esc(o.trackingUrl) + '" target="_blank" onclick="event.stopPropagation();">📦 Track: ' + esc(o.trackingNumber) + '</a>';
+          } else {
+            html += '<span class="tracking-link">📦 ' + esc(o.trackingNumber) + '</span>';
+          }
+        }
+
+        // Expanded detail (click to show)
+        html += '<div class="order-expanded">';
+        html += '<div class="order-details">';
+        if (o.cargo) html += field('Cargo #', o.cargo);
+        if (o.mark) html += field('Mark / ICO', o.mark);
+        if (o.bagCount) html += field('Bags', o.bagCount);
+        if (o.sampleWeight) html += field('Sample Weight', o.sampleWeight);
+        if (o.containerStatus) html += field('Container Status', o.containerStatus);
+        if (o.containerETA) html += field('Container ETA', o.containerETA);
+        if (o.receivedDate) html += field('Received', o.receivedDate);
+        if (o.shippedDate) html += field('Shipped', o.shippedDate);
+        html += '</div>';
+        html += '</div>';
+
+        html += '</div>';
+      });
+
+      list.innerHTML = html;
+    }
+
+    function field(label, value) {
+      return '<div class="order-field"><span class="fl">' + label + ': </span><span class="fv">' + esc(value) + '</span></div>';
+    }
+
+    function esc(s) {
+      if (!s) return '';
+      var d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function toggleCard(el) {
+      el.classList.toggle('open');
+    }
+
+    // ── Filter ──
+    function filterOrders() {
+      var search = document.getElementById('searchInput').value.toLowerCase();
+      var status = document.getElementById('statusFilter').value;
+
+      var filtered = allOrders.filter(function(o) {
+        // Status filter
+        if (status) {
+          if (status === 'Scanned' && o.status !== 'Scanned') return false;
+          else if (status !== 'Scanned' && o.status !== status) return false;
+        }
+        // Text search
+        if (search) {
+          var searchable = [o.csSample, o.csOrder, o.sampleOrderNum, o.description,
+            o.container, o.cargo, o.mark, o.receiver, o.warehouse, o.trackingNumber]
+            .join(' ').toLowerCase();
+          if (searchable.indexOf(search) === -1) return false;
+        }
+        return true;
+      });
+
+      renderOrders(filtered);
+    }
+
+    // ── Auto-refresh every 2 minutes ──
+    setInterval(function() {
+      if (portalToken) {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success) {
+              allOrders = result.orders || [];
+              document.getElementById('statTotal').textContent = result.stats.total;
+              document.getElementById('statReceived').textContent = result.stats.received;
+              document.getElementById('statScanned').textContent = result.stats.scanned;
+              document.getElementById('statShipped').textContent = result.stats.shipped;
+              filterOrders(); // Re-render with current filters
+              document.getElementById('refreshTime').textContent = new Date().toLocaleString();
+            }
+          })
+          .getPortalData(portalToken);
+      }
+    }, 120000);
+
+    // ── Initialize ──
+    loadData();
+  </script>
+</body>
+</html>

@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; padding: 12px; background: #f9f9f9; font-size: 13px; }
+    h2 { color: #2E5339; margin-bottom: 12px; font-size: 16px; text-align: center; }
+    .form-section {
+      background: #fff; border-radius: 8px; padding: 12px;
+      margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .form-section h3 {
+      font-size: 12px; color: #2E5339; margin-bottom: 8px;
+      padding-bottom: 4px; border-bottom: 1px solid #e0e0e0;
+    }
+    label { display: block; font-size: 11px; color: #555; margin-bottom: 3px; font-weight: bold; }
+    input, select, textarea {
+      width: 100%; padding: 8px; border: 1px solid #ccc;
+      border-radius: 5px; font-size: 13px; margin-bottom: 8px;
+    }
+    input:focus, select:focus { outline: none; border-color: #2E5339; box-shadow: 0 0 0 2px rgba(46,83,57,0.2); }
+    .row { display: flex; gap: 8px; }
+    .row > div { flex: 1; }
+    .submit-btn {
+      flex: 1; padding: 12px; background: #2E5339; color: #fff;
+      border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer;
+    }
+    .submit-btn:hover { background: #3a6249; }
+    .submit-btn:disabled { background: #ccc; }
+    .btn-row { display: flex; gap: 8px; }
+    .clear-btn {
+      padding: 12px 16px; background: #f0f0f0; color: #666;
+      border: 1px solid #ccc; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap;
+    }
+    .clear-btn:hover { background: #e0e0e0; color: #333; }
+    #statusMsg {
+      padding: 10px; border-radius: 6px; text-align: center;
+      font-weight: bold; margin-top: 10px; display: none; transition: opacity 0.5s;
+    }
+    .msg-success { background: #d4edda; color: #155724; display: block !important; }
+    .msg-error { background: #f8d7da; color: #721c24; display: block !important; }
+    #submitCount { text-align: center; font-size: 11px; color: #888; margin-top: 6px; }
+    #submitCount span { font-weight: bold; color: #2E5339; }
+    .contact-picker { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
+    .contact-picker select { flex: 1; margin-bottom: 0; }
+    .new-btn {
+      padding: 6px 10px; background: #2E5339; color: #fff; border: none;
+      border-radius: 5px; font-size: 11px; font-weight: bold; cursor: pointer; white-space: nowrap;
+    }
+    .new-btn:hover { background: #3a6249; }
+    .new-btn.active { background: #e67e22; }
+    .contact-fields { display: none; }
+    .contact-fields.show { display: block; }
+    .save-check { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 11px; color: #555; }
+    .save-check input { width: auto; margin: 0; }
+    .contact-preview {
+      font-size: 11px; color: #2E5339; padding: 6px 8px; background: #e8f5e9;
+      border-radius: 4px; margin-bottom: 8px; display: none; line-height: 1.4;
+    }
+    .contact-preview.show { display: block; }
+    .hist-item {
+      padding: 3px 0; border-bottom: 1px solid #f0f0f0; color: #2E5339; font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <h2>✍️ New Sample Order</h2>
+
+  <!-- Order Info -->
+  <div class="form-section">
+    <h3>📋 Order Information</h3>
+    <div class="row">
+      <div><label>Order Number</label><input type="text" id="orderNumber" placeholder="e.g. SO-12345"></div>
+      <div>
+        <label>Sample Type</label>
+        <select id="sampleType">
+          <option value="Warehouse Sample">📦 Warehouse Sample</option>
+          <option value="Photos With Sample">📷 Photos With Sample</option>
+          <option value="Container Supervision">🔍 Container Supervision</option>
+          <option value="FCC Grading-Cocoa">🏷️ FCC Grading-Cocoa</option>
+          <option value="Exchange Samples">☕ Exchange Samples</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div><label>Warehouse</label><select id="warehouse"><?!= warehouseOptions ?></select></div>
+      <div><label>Sample Weight</label><input type="text" id="sampleWeight" value="2 LB"></div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Shipping Method</label>
+        <select id="shipping">
+          <option value="FedEx Overnight">FedEx Overnight</option>
+          <option value="FedEx 2-Day">FedEx 2-Day</option>
+          <option value="FedEx Ground">FedEx Ground</option>
+          <option value="UPS Ground">UPS Ground</option>
+          <option value="USPS Priority">USPS Priority</option>
+          <option value="Warehouse Sample">Warehouse Sample</option>
+          <option value="Pickup">Pickup</option>
+        </select>
+      </div>
+      <div><label>FedEx Account</label><input type="text" id="fedexAccount" placeholder="Optional"></div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Shipping Line</label>
+        <select id="shippingLine">
+          <option value="">-- None --</option>
+          <option value="MSC">MSC</option><option value="ZIM">ZIM</option>
+          <option value="HAPAG-LLOYD">HAPAG-LLOYD</option><option value="MAERSK">MAERSK</option>
+          <option value="SEABOARD MARINE">SEABOARD MARINE</option><option value="ONE">ONE</option>
+          <option value="CMA-CGM">CMA-CGM</option><option value="EVERGREEN">EVERGREEN</option>
+          <option value="COSCO">COSCO</option>
+        </select>
+      </div>
+      <div><label>ETA</label><input type="date" id="eta"></div>
+    </div>
+    <label>Shipping Notes</label>
+    <input type="text" id="shippingNotes" placeholder="e.g. vessel ID, comments">
+  </div>
+
+  <!-- Ship From -->
+  <div class="form-section">
+    <h3>📤 Ship From (Sender)</h3>
+    <div class="contact-picker">
+      <input type="text" id="shipFromSelect" list="shipFromList" placeholder="Type to search shippers..." oninput="onContactType('from')" style="margin-bottom:0;">
+      <datalist id="shipFromList"></datalist>
+      <button type="button" class="new-btn" id="fromNewBtn" onclick="toggleNew('from')">+ New</button>
+    </div>
+    <div class="contact-preview" id="fromPreview"></div>
+    <div class="contact-fields" id="fromFieldsWrap">
+      <label>Company</label><input type="text" id="fromCompany" placeholder="Shipper company name">
+      <label>Attention</label><input type="text" id="fromAttention" placeholder="Contact name">
+      <label>Address</label><input type="text" id="fromAddress" placeholder="Street address (optional)">
+      <div class="row">
+        <div><label>City</label><input type="text" id="fromCity"></div>
+        <div><label>State</label><input type="text" id="fromState" maxlength="2"></div>
+        <div><label>Zip</label><input type="text" id="fromZip" maxlength="10"></div>
+      </div>
+      <div class="save-check"><input type="checkbox" id="saveFrom" checked><label for="saveFrom" style="margin:0;font-weight:normal;">Save for future orders</label></div>
+    </div>
+  </div>
+
+  <!-- Ship To -->
+  <div class="form-section">
+    <h3>📦 Ship To (Receiver)</h3>
+    <div class="contact-picker">
+      <input type="text" id="shipToSelect" list="shipToList" placeholder="Type to search receivers..." oninput="onContactType('to')" style="margin-bottom:0;">
+      <datalist id="shipToList"></datalist>
+      <button type="button" class="new-btn" id="toNewBtn" onclick="toggleNew('to')">+ New</button>
+    </div>
+    <div class="contact-preview" id="toPreview"></div>
+    <div class="contact-fields" id="toFieldsWrap">
+      <label>Company</label><input type="text" id="recvCompany" placeholder="Receiver company name">
+      <label>Attention</label><input type="text" id="recvAttention" placeholder="Contact name">
+      <label>Address</label><input type="text" id="recvAddress" placeholder="Street address">
+      <div class="row">
+        <div><label>City</label><input type="text" id="recvCity"></div>
+        <div><label>State</label><input type="text" id="recvState" maxlength="2"></div>
+        <div><label>Zip</label><input type="text" id="recvZip" maxlength="10"></div>
+      </div>
+      <div class="save-check"><input type="checkbox" id="saveTo" checked><label for="saveTo" style="margin:0;font-weight:normal;">Save for future orders</label></div>
+    </div>
+  </div>
+
+  <!-- Sample Details (single — tweak & resubmit) -->
+  <div class="form-section">
+    <h3>☕ Sample Details <span style="font-weight:normal;color:#888;font-size:10px;">— tweak fields between submits</span></h3>
+    <div class="row">
+      <div><label>Container</label><input type="text" id="sContainer" placeholder="ABCD1234567"></div>
+      <div><label>Mark</label><input type="text" id="sMark" placeholder="003/0123/456"></div>
+    </div>
+    <div class="row">
+      <div><label>Cargo</label><input type="text" id="sCargo" placeholder="C123456"></div>
+      <div><label>Bags</label><input type="text" id="sBags" placeholder="300"></div>
+    </div>
+    <div class="row">
+      <div><label>P #</label><input type="text" id="sPnum" placeholder="P number"></div>
+      <div><label>S #</label><input type="text" id="sSnum" placeholder="S number"></div>
+      <div><label>Other Ref #</label><input type="text" id="sReference" placeholder="Reference"></div>
+    </div>
+    <label>Description</label>
+    <input type="text" id="sDescription" placeholder="Green coffee, washed arabica...">
+  </div>
+
+  <div class="btn-row">
+    <button class="submit-btn" id="submitBtn" onclick="submitSample()">Add Sample</button>
+    <button class="clear-btn" onclick="clearForm()">Clear All</button>
+  </div>
+  <div id="submitCount"></div>
+  <div id="statusMsg"></div>
+
+  <div id="historySection" class="form-section" style="display:none;margin-top:10px;">
+    <h3>✅ Added This Session</h3>
+    <div id="historyList"></div>
+  </div>
+
+<script>
+var CONTACTS = <?!= contactsJson ?>;
+var newMode = { from: false, to: false };
+var submitTotal = 0;
+var fadeTimer = null;
+var STATE_KEY = 'css_order_form_state';
+var addedSamples = [];
+
+var FIELD_IDS = {
+  from: { company: 'fromCompany', attention: 'fromAttention', address: 'fromAddress', city: 'fromCity', state: 'fromState', zip: 'fromZip' },
+  to:   { company: 'recvCompany', attention: 'recvAttention', address: 'recvAddress', city: 'recvCity', state: 'recvState', zip: 'recvZip' }
+};
+
+var SAMPLE_IDS = ['sContainer','sMark','sCargo','sBags','sPnum','sSnum','sReference','sDescription'];
+
+// ── State save/restore ──
+function saveState() {
+  try {
+    var s = {};
+    ['orderNumber','sampleType','warehouse','sampleWeight','shipping','fedexAccount',
+     'shippingLine','eta','shippingNotes'].forEach(function(id) { s[id] = document.getElementById(id).value; });
+    s.shipFrom = document.getElementById('shipFromSelect').value;
+    s.shipTo = document.getElementById('shipToSelect').value;
+    s.fromNew = newMode.from;
+    s.toNew = newMode.to;
+    s.fromFields = {}; s.toFields = {};
+    for (var k in FIELD_IDS.from) s.fromFields[k] = document.getElementById(FIELD_IDS.from[k]).value;
+    for (var k in FIELD_IDS.to) s.toFields[k] = document.getElementById(FIELD_IDS.to[k]).value;
+    s.sample = {};
+    SAMPLE_IDS.forEach(function(id) { s.sample[id] = document.getElementById(id).value; });
+    s.submitTotal = submitTotal;
+    s.addedSamples = addedSamples;
+    localStorage.setItem(STATE_KEY, JSON.stringify(s));
+  } catch(e) {}
+}
+
+function restoreState() {
+  try {
+    var json = localStorage.getItem(STATE_KEY);
+    if (!json) return;
+    var s = JSON.parse(json);
+    ['orderNumber','sampleType','warehouse','sampleWeight','shipping','fedexAccount',
+     'shippingLine','eta','shippingNotes'].forEach(function(id) {
+      if (s[id] !== undefined) document.getElementById(id).value = s[id];
+    });
+    if (s.fromNew && s.fromFields) { toggleNew('from'); setFields('from', s.fromFields); }
+    else if (s.shipFrom) { document.getElementById('shipFromSelect').value = s.shipFrom; onContactSelect('from'); }
+    if (s.toNew && s.toFields) { toggleNew('to'); setFields('to', s.toFields); }
+    else if (s.shipTo) { document.getElementById('shipToSelect').value = s.shipTo; onContactSelect('to'); }
+    if (s.sample) SAMPLE_IDS.forEach(function(id) { if (s.sample[id] !== undefined) document.getElementById(id).value = s.sample[id]; });
+    submitTotal = s.submitTotal || 0;
+    addedSamples = s.addedSamples || [];
+    if (submitTotal > 0) document.getElementById('submitCount').innerHTML = 'Samples added: <span>' + submitTotal + '</span>';
+    renderHistory();
+  } catch(e) {}
+}
+
+function setFields(dir, vals) {
+  var ids = FIELD_IDS[dir];
+  for (var k in vals) { if (ids[k]) document.getElementById(ids[k]).value = vals[k] || ''; }
+}
+
+// ── Dropdowns (datalist for type-ahead) ──
+function populateDropdowns() {
+  var fromList = document.getElementById('shipFromList');
+  var toList = document.getElementById('shipToList');
+  CONTACTS.shippers.forEach(function(c) {
+    var o = document.createElement('option'); o.value = c.company; fromList.appendChild(o);
+  });
+  CONTACTS.receivers.forEach(function(c) {
+    var o = document.createElement('option');
+    o.value = c.company;
+    toList.appendChild(o);
+  });
+}
+
+// Fires as user types — match when exact company found
+function onContactType(dir) {
+  var val = document.getElementById(dir === 'from' ? 'shipFromSelect' : 'shipToSelect').value.trim();
+  var c = findContact(dir, val);
+  if (c) {
+    onContactSelect(dir);
+  } else {
+    document.getElementById(dir + 'Preview').className = 'contact-preview';
+  }
+}
+
+// ── Contacts ──
+function findContact(dir, company) {
+  if (!company) return null;
+  var lc = company.toLowerCase();
+  return (dir === 'from' ? CONTACTS.shippers : CONTACTS.receivers).find(function(c) { return c.company.toLowerCase() === lc; });
+}
+
+function onContactSelect(dir) {
+  var selId = dir === 'from' ? 'shipFromSelect' : 'shipToSelect';
+  var company = document.getElementById(selId).value;
+  var preview = document.getElementById(dir + 'Preview');
+  if (!company) { preview.className = 'contact-preview'; return; }
+  var c = findContact(dir, company);
+  if (!c) return;
+  var lines = [c.company];
+  if (c.attention) lines.push('Attn: ' + c.attention);
+  if (c.address) lines.push(c.address);
+  var cl = [c.city, c.state].filter(Boolean).join(', '); if (c.zip) cl += ' ' + c.zip; if (cl) lines.push(cl);
+  preview.innerHTML = lines.join('<br>');
+  preview.className = 'contact-preview show';
+  document.getElementById(dir + 'FieldsWrap').className = 'contact-fields';
+  newMode[dir] = false;
+  document.getElementById(dir + 'NewBtn').className = 'new-btn';
+  document.getElementById(dir + 'NewBtn').textContent = '+ New';
+  var ids = FIELD_IDS[dir];
+  document.getElementById(ids.company).value = c.company;
+  document.getElementById(ids.attention).value = c.attention || '';
+  document.getElementById(ids.address).value = c.address || '';
+  document.getElementById(ids.city).value = c.city || '';
+  document.getElementById(ids.state).value = c.state || '';
+  document.getElementById(ids.zip).value = c.zip || '';
+}
+
+function toggleNew(dir) {
+  newMode[dir] = !newMode[dir];
+  var btn = document.getElementById(dir + 'NewBtn');
+  var fields = document.getElementById(dir + 'FieldsWrap');
+  var preview = document.getElementById(dir + 'Preview');
+  var selId = dir === 'from' ? 'shipFromSelect' : 'shipToSelect';
+  if (newMode[dir]) {
+    btn.className = 'new-btn active'; btn.textContent = 'Cancel';
+    fields.className = 'contact-fields show'; preview.className = 'contact-preview';
+    document.getElementById(selId).value = '';
+    var ids = FIELD_IDS[dir]; for (var k in ids) document.getElementById(ids[k]).value = '';
+    document.getElementById(ids.company).focus();
+  } else {
+    btn.className = 'new-btn'; btn.textContent = '+ New';
+    fields.className = 'contact-fields';
+  }
+}
+
+function getContactData(dir) {
+  var ids = FIELD_IDS[dir];
+  return {
+    company: document.getElementById(ids.company).value.trim(),
+    attention: document.getElementById(ids.attention).value.trim(),
+    address: document.getElementById(ids.address).value.trim(),
+    city: document.getElementById(ids.city).value.trim(),
+    state: document.getElementById(ids.state).value.trim(),
+    zip: document.getElementById(ids.zip).value.trim(),
+    isNew: newMode[dir],
+    save: newMode[dir] ? document.getElementById('save' + (dir === 'from' ? 'From' : 'To')).checked : false
+  };
+}
+
+// ── Submit one sample ──
+function submitSample() {
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = 'Adding...';
+  clearStatus();
+
+  var sender = getContactData('from');
+  var receiver = getContactData('to');
+  var sample = {
+    container: document.getElementById('sContainer').value.trim(),
+    marks: document.getElementById('sMark').value.trim(),
+    cargo: document.getElementById('sCargo').value.trim(),
+    bags: document.getElementById('sBags').value.trim(),
+    pNumber: document.getElementById('sPnum').value.trim(),
+    sNumber: document.getElementById('sSnum').value.trim(),
+    reference: document.getElementById('sReference').value.trim(),
+    description: document.getElementById('sDescription').value.trim()
+  };
+
+  var orderData = {
+    customer: sender.company,
+    orderNumber: document.getElementById('orderNumber').value.trim(),
+    warehouse: document.getElementById('warehouse').value,
+    sampleWeight: document.getElementById('sampleWeight').value.trim(),
+    shipping: document.getElementById('shipping').value,
+    fedexAccount: document.getElementById('fedexAccount').value.trim(),
+    sampleType: document.getElementById('sampleType').value,
+    eta: document.getElementById('eta').value,
+    shippingLine: document.getElementById('shippingLine').value,
+    shippingNotes: document.getElementById('shippingNotes').value.trim(),
+    sender: sender,
+    receiver: receiver,
+    samples: [sample]
+  };
+
+  // Save BEFORE server call so sidebar refresh restores everything
+  saveState();
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      btn.disabled = false; btn.textContent = 'Add Sample';
+      if (result.success) {
+        submitTotal++;
+        var label = sample.cargo || sample.container || sample.marks || 'Sample ' + submitTotal;
+        addedSamples.push(label);
+        document.getElementById('submitCount').innerHTML = 'Samples added: <span>' + submitTotal + '</span>';
+        showStatus('msg-success', '✅ #' + submitTotal + ': ' + label);
+        renderHistory();
+        saveState();
+        if (fadeTimer) clearTimeout(fadeTimer);
+        fadeTimer = setTimeout(function() {
+          var el = document.getElementById('statusMsg');
+          el.style.opacity = '0';
+          setTimeout(function() { el.className = ''; el.style.display = 'none'; el.style.opacity = '1'; }, 600);
+        }, 4000);
+        if (sender.isNew && sender.save && sender.company) {
+          google.script.run.saveNewContact('Shipper', sender);
+          CONTACTS.shippers.push(sender); refreshDD('shipFromSelect', CONTACTS.shippers, false);
+        }
+        if (receiver.isNew && receiver.save && receiver.company) {
+          google.script.run.saveNewContact('Receiver', receiver);
+          CONTACTS.receivers.push(receiver); refreshDD('shipToSelect', CONTACTS.receivers, true);
+        }
+      } else {
+        showStatus('msg-error', result.message);
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false; btn.textContent = 'Add Sample';
+      showStatus('msg-error', '❌ Error: ' + err.message);
+    })
+    .processManualOrderEntry(orderData);
+}
+
+// ── History ──
+function renderHistory() {
+  var sec = document.getElementById('historySection');
+  var list = document.getElementById('historyList');
+  if (addedSamples.length === 0) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+  var html = '';
+  for (var i = addedSamples.length - 1; i >= 0; i--) {
+    html += '<div class="hist-item">#' + (i + 1) + ' — ' + addedSamples[i] + '</div>';
+  }
+  list.innerHTML = html;
+}
+
+function refreshDD(selId, list, showCity) {
+  var listId = selId === 'shipFromSelect' ? 'shipFromList' : 'shipToList';
+  var dl = document.getElementById(listId);
+  dl.innerHTML = '';
+  list.forEach(function(c) {
+    var o = document.createElement('option');
+    o.value = c.company;
+    dl.appendChild(o);
+  });
+}
+
+function showStatus(cls, msg) {
+  var el = document.getElementById('statusMsg'); el.style.opacity = '1'; el.className = cls; el.textContent = msg;
+}
+function clearStatus() {
+  var el = document.getElementById('statusMsg'); el.className = ''; el.style.display = 'none';
+}
+
+function clearForm() {
+  try { localStorage.removeItem(STATE_KEY); } catch(e) {}
+  submitTotal = 0; addedSamples = [];
+  ['orderNumber','fedexAccount','eta','shippingNotes'].forEach(function(id) { document.getElementById(id).value = ''; });
+  document.getElementById('sampleWeight').value = '2 LB';
+  ['sampleType','shipping','shippingLine'].forEach(function(id) { document.getElementById(id).selectedIndex = 0; });
+  document.getElementById('shipFromSelect').value = '';
+  document.getElementById('fromPreview').className = 'contact-preview';
+  document.getElementById('fromFieldsWrap').className = 'contact-fields';
+  newMode.from = false;
+  document.getElementById('fromNewBtn').className = 'new-btn'; document.getElementById('fromNewBtn').textContent = '+ New';
+  for (var k in FIELD_IDS.from) document.getElementById(FIELD_IDS.from[k]).value = '';
+  document.getElementById('shipToSelect').value = '';
+  document.getElementById('toPreview').className = 'contact-preview';
+  document.getElementById('toFieldsWrap').className = 'contact-fields';
+  newMode.to = false;
+  document.getElementById('toNewBtn').className = 'new-btn'; document.getElementById('toNewBtn').textContent = '+ New';
+  for (var k in FIELD_IDS.to) document.getElementById(FIELD_IDS.to[k]).value = '';
+  SAMPLE_IDS.forEach(function(id) { document.getElementById(id).value = ''; });
+  document.getElementById('submitCount').innerHTML = '';
+  document.getElementById('historySection').style.display = 'none';
+  clearStatus();
+}
+
+populateDropdowns();
+restoreState();
+</script>
+</body>
+</html>
