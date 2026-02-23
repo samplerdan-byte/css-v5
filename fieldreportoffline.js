@@ -6,7 +6,12 @@
 // ============================================================
 
 function generateOfflineFieldReport() {
+  Logger.log('generateOfflineFieldReport: starting');
   var reportData = getFieldReportData();
+  if (!reportData || !reportData.warehouses) {
+    Logger.log('generateOfflineFieldReport: no report data returned');
+    return { success: false, html: '', message: 'Failed to load report data.' };
+  }
   var perms = getEditorPermissions();
 
   var warehouseNames = Object.keys(reportData.warehouses).sort();
@@ -378,6 +383,7 @@ function generateOfflineFieldReport() {
     '<div id="toast"></div>\n' +
     '</body>\n</html>';
 
+  Logger.log('generateOfflineFieldReport: done, ' + warehouseNames.length + ' warehouse(s)');
   return { success: true, html: html, message: 'Offline report ready' };
 }
 
@@ -455,6 +461,8 @@ function importOfflineEdits(jsonStr) {
   var skipped = 0;
   var errors = [];
 
+  // Group valid edits by row for batched writes
+  var editsByRow = {};
   for (var i = 0; i < edits.length; i++) {
     var edit = edits[i];
     if (!edit.row || !edit.column) {
@@ -476,15 +484,39 @@ function importOfflineEdits(jsonStr) {
       continue;
     }
 
+    if (!editsByRow[edit.row]) editsByRow[edit.row] = [];
+    editsByRow[edit.row].push({ colIdx: colIdx, value: edit.value || '' });
+  }
+
+  // Apply edits in batched writes per row
+  var rowKeys = Object.keys(editsByRow);
+  for (var r = 0; r < rowKeys.length; r++) {
+    var rowNum = parseInt(rowKeys[r], 10);
+    var rowEdits = editsByRow[rowNum];
     try {
-      sheet.getRange(edit.row, colIdx + 1).setValue(edit.value || '');
-      applied++;
+      if (rowEdits.length === 1) {
+        sheet.getRange(rowNum, rowEdits[0].colIdx + 1).setValue(rowEdits[0].value);
+      } else {
+        // Batch: find min/max column span and write as a range
+        var minCol = rowEdits[0].colIdx, maxCol = rowEdits[0].colIdx;
+        for (var e = 1; e < rowEdits.length; e++) {
+          if (rowEdits[e].colIdx < minCol) minCol = rowEdits[e].colIdx;
+          if (rowEdits[e].colIdx > maxCol) maxCol = rowEdits[e].colIdx;
+        }
+        var rangeVals = sheet.getRange(rowNum, minCol + 1, 1, maxCol - minCol + 1).getValues()[0];
+        for (var e = 0; e < rowEdits.length; e++) {
+          rangeVals[rowEdits[e].colIdx - minCol] = rowEdits[e].value;
+        }
+        sheet.getRange(rowNum, minCol + 1, 1, maxCol - minCol + 1).setValues([rangeVals]);
+      }
+      applied += rowEdits.length;
     } catch (e) {
-      errors.push('Row ' + edit.row + ': ' + e.message);
-      skipped++;
+      errors.push('Row ' + rowNum + ': ' + e.message);
+      skipped += rowEdits.length;
     }
   }
 
+  Logger.log('importOfflineEdits: applied=' + applied + ', skipped=' + skipped);
   var msg = '✅ Applied ' + applied + ' edit(s)';
   if (skipped > 0) msg += ', skipped ' + skipped;
   if (errors.length > 0) msg += '\n\nIssues:\n' + errors.slice(0, 5).join('\n');
@@ -501,6 +533,11 @@ function importOfflineEdits(jsonStr) {
 // The project must be deployed as a web app for this to work.
 function doPost(e) {
   try {
+    Logger.log('doPost: received request');
+    if (!e || !e.postData || !e.postData.contents) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Empty request body' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     var payload = JSON.parse(e.postData.contents);
 
     // Auth check — require token for all POST actions
@@ -521,17 +558,41 @@ function doPost(e) {
       var col = _getColumnMap(sheet);
       var applied = 0;
 
+      // Group edits by row for batched writes
+      var editsByRow = {};
       for (var i = 0; i < payload.edits.length; i++) {
         var edit = payload.edits[i];
         if (!edit.row || !edit.column) continue;
         var colIdx = col[edit.column];
         if (colIdx === undefined) continue;
-        try {
-          sheet.getRange(edit.row, colIdx + 1).setValue(edit.value || '');
-          applied++;
-        } catch (err) { /* skip individual failures */ }
+        if (!editsByRow[edit.row]) editsByRow[edit.row] = [];
+        editsByRow[edit.row].push({ colIdx: colIdx, value: edit.value || '' });
       }
 
+      var rowKeys = Object.keys(editsByRow);
+      for (var r = 0; r < rowKeys.length; r++) {
+        var rowNum = parseInt(rowKeys[r], 10);
+        var rowEdits = editsByRow[rowNum];
+        try {
+          if (rowEdits.length === 1) {
+            sheet.getRange(rowNum, rowEdits[0].colIdx + 1).setValue(rowEdits[0].value);
+          } else {
+            var minCol = rowEdits[0].colIdx, maxCol = rowEdits[0].colIdx;
+            for (var e = 1; e < rowEdits.length; e++) {
+              if (rowEdits[e].colIdx < minCol) minCol = rowEdits[e].colIdx;
+              if (rowEdits[e].colIdx > maxCol) maxCol = rowEdits[e].colIdx;
+            }
+            var rangeVals = sheet.getRange(rowNum, minCol + 1, 1, maxCol - minCol + 1).getValues()[0];
+            for (var e = 0; e < rowEdits.length; e++) {
+              rangeVals[rowEdits[e].colIdx - minCol] = rowEdits[e].value;
+            }
+            sheet.getRange(rowNum, minCol + 1, 1, maxCol - minCol + 1).setValues([rangeVals]);
+          }
+          applied += rowEdits.length;
+        } catch (err) { /* skip individual row failures */ }
+      }
+
+      Logger.log('doPost syncFieldReport: applied ' + applied + ' of ' + payload.edits.length + ' edit(s)');
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
         message: 'Applied ' + applied + ' of ' + payload.edits.length + ' edit(s)'

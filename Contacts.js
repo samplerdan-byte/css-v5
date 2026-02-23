@@ -10,6 +10,7 @@
 // Do NOT re-define them here — duplicates cause project-wide compile failure.
 
 function setupContacts() {
+  try {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Contacts');
   var isNew = !sheet;
@@ -184,8 +185,9 @@ function setupContacts() {
     }
   }
 
-  // ── Add rows, skipping duplicates ──
+  // ── Build batch of new rows, skipping duplicates ──
   var addedCount = 0;
+  var newRows = [];
 
   function addContact(type, contactArr) {
     var company   = contactArr[0] || '';
@@ -198,15 +200,23 @@ function setupContacts() {
     var key = type + '|' + company.toLowerCase();
     if (existingNames[key]) return;
     existingNames[key] = true;
-    sheet.appendRow([type, company, attention, address, city, state, zip, '', '', '']);
+    newRows.push([type, company, attention, address, city, state, zip, '', '', '']);
     addedCount++;
   }
 
   for (var s = 0; s < tradingHouses.length; s++) addContact('Shipper', tradingHouses[s]);
   for (var r = 0; r < roasters.length; r++) addContact('Receiver', roasters[r]);
 
+  // Write all new rows in a single batch call
+  if (newRows.length > 0) {
+    var startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, newRows.length, 10).setValues(newRows);
+    Logger.log('setupContacts: batch-wrote ' + newRows.length + ' rows starting at row ' + startRow);
+  }
+
   sheet.autoResizeColumn(2);
 
+  Logger.log('setupContacts: ' + (isNew ? 'created' : 'updated') + ' sheet, added ' + addedCount + ' contacts');
   SpreadsheetApp.getUi().alert(
     'Contacts ' + (isNew ? 'sheet created' : 'updated') + '!\n\n' +
     addedCount + ' contacts added (' + tradingHouses.length + ' shippers, ' + roasters.length + ' receivers).\n\n' +
@@ -214,42 +224,52 @@ function setupContacts() {
     'phone numbers, or additional contacts.\n' +
     'New contacts added via order entry are saved here automatically.'
   );
+  } catch (e) {
+    Logger.log('setupContacts ERROR: ' + e.message);
+    SpreadsheetApp.getUi().alert('Error setting up Contacts: ' + e.message);
+  }
 }
 
 function getContactsList() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('Contacts');
-  if (!sheet || sheet.getLastRow() < 2) return { shippers: [], receivers: [] };
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('Contacts');
+    if (!sheet || sheet.getLastRow() < 2) return { shippers: [], receivers: [] };
 
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 10).getValues();
-  var shippers = [];
-  var receivers = [];
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 10).getValues();
+    var shippers = [];
+    var receivers = [];
 
-  for (var i = 0; i < data.length; i++) {
-    var type = String(data[i][0]).trim();
-    var company = String(data[i][1]).trim();
-    if (!company) continue;
+    for (var i = 0; i < data.length; i++) {
+      var type = String(data[i][0]).trim();
+      var company = String(data[i][1]).trim();
+      if (!company) continue;
 
-    var contact = {
-      company: company,
-      attention: String(data[i][2] || '').trim(),
-      address: String(data[i][3] || '').trim(),
-      city: String(data[i][4] || '').trim(),
-      state: String(data[i][5] || '').trim(),
-      zip: String(data[i][6] || '').trim(),
-      phone: String(data[i][7] || '').trim(),
-      email: String(data[i][8] || '').trim(),
-      notes: String(data[i][9] || '').trim()
-    };
+      var contact = {
+        company: company,
+        attention: String(data[i][2] || '').trim(),
+        address: String(data[i][3] || '').trim(),
+        city: String(data[i][4] || '').trim(),
+        state: String(data[i][5] || '').trim(),
+        zip: String(data[i][6] || '').trim(),
+        phone: String(data[i][7] || '').trim(),
+        email: String(data[i][8] || '').trim(),
+        notes: String(data[i][9] || '').trim()
+      };
 
-    if (type === 'Shipper') shippers.push(contact);
-    else if (type === 'Receiver') receivers.push(contact);
+      if (type === 'Shipper') shippers.push(contact);
+      else if (type === 'Receiver') receivers.push(contact);
+    }
+
+    shippers.sort(function(a, b) { return a.company.localeCompare(b.company); });
+    receivers.sort(function(a, b) { return a.company.localeCompare(b.company); });
+
+    Logger.log('getContactsList: ' + shippers.length + ' shippers, ' + receivers.length + ' receivers');
+    return { shippers: shippers, receivers: receivers };
+  } catch (e) {
+    Logger.log('getContactsList ERROR: ' + e.message);
+    return { shippers: [], receivers: [] };
   }
-
-  shippers.sort(function(a, b) { return a.company.localeCompare(b.company); });
-  receivers.sort(function(a, b) { return a.company.localeCompare(b.company); });
-
-  return { shippers: shippers, receivers: receivers };
 }
 
 function saveNewContact(type, contactData) {

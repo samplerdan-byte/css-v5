@@ -14,6 +14,7 @@
  * verify scanning, billing, cover sheets, photos, and reports end-to-end.
  */
 function runAllTestOrders() {
+  Logger.log('runAllTestOrders: Starting test order insertion');
   var ui = SpreadsheetApp.getUi();
   var resp = ui.alert(
     'Insert Test Orders',
@@ -26,7 +27,11 @@ function runAllTestOrders() {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(CONFIG.mainSheetName);
-  if (!sheet) { ui.alert('All Orders sheet not found. Run Setup first.'); return; }
+  if (!sheet) {
+    Logger.log('runAllTestOrders: Main sheet not found');
+    ui.alert('All Orders sheet not found. Run Setup first.');
+    return;
+  }
 
   var orders = _buildTestOrders();
   var added = 0;
@@ -39,13 +44,20 @@ function runAllTestOrders() {
       }
       addDataToSheet(sheet, data, { skipLiveUpdate: true, skipAutoPrint: true });
       added++;
+      Logger.log('runAllTestOrders: Added ' + orders[i]._testCode);
     } catch (e) {
-      Logger.log('Test order ' + i + ' (' + orders[i]._testCode + ') failed: ' + e);
+      Logger.log('Test order ' + i + ' (' + orders[i]._testCode + ') failed: ' + e.toString());
     }
   }
 
-  try { updateLiveOrdersView(); } catch (e) {}
+  try {
+    Logger.log('runAllTestOrders: Updating live orders view');
+    updateLiveOrdersView();
+  } catch (e) {
+    Logger.log('runAllTestOrders: Live orders update failed: ' + e.toString());
+  }
 
+  Logger.log('runAllTestOrders: Complete - added ' + added + ' of ' + orders.length + ' orders');
   ui.alert('Done! Added ' + added + ' of ' + orders.length + ' test orders.\n\n' +
     'Look for "TEST-" in the Comments column.\n' +
     'Run clearTestOrders() when finished testing.');
@@ -55,6 +67,7 @@ function runAllTestOrders() {
  * Minimal set: 5 orders covering the main workflows.
  */
 function runTestOrdersMinimal() {
+  Logger.log('runTestOrdersMinimal: Starting minimal test order insertion');
   var ui = SpreadsheetApp.getUi();
   var resp = ui.alert(
     'Insert 5 Core Test Orders',
@@ -71,7 +84,11 @@ function runTestOrdersMinimal() {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(CONFIG.mainSheetName);
-  if (!sheet) { ui.alert('All Orders sheet not found.'); return; }
+  if (!sheet) {
+    Logger.log('runTestOrdersMinimal: Main sheet not found');
+    ui.alert('All Orders sheet not found.');
+    return;
+  }
 
   var all = _buildTestOrders();
   var keys = ['REG', 'PHOTO-W', 'INSPECT', 'CONT-IN', 'INV-COCOA'];
@@ -86,11 +103,20 @@ function runTestOrdersMinimal() {
         }
         addDataToSheet(sheet, data, { skipLiveUpdate: true, skipAutoPrint: true });
         added++;
-      } catch (e) { Logger.log('Mini test ' + i + ' failed: ' + e); }
+        Logger.log('runTestOrdersMinimal: Added ' + all[i]._testCode);
+      } catch (e) {
+        Logger.log('Mini test ' + i + ' failed: ' + e.toString());
+      }
     }
   }
 
-  try { updateLiveOrdersView(); } catch (e) {}
+  try {
+    Logger.log('runTestOrdersMinimal: Updating live orders view');
+    updateLiveOrdersView();
+  } catch (e) {
+    Logger.log('runTestOrdersMinimal: Live orders update failed: ' + e.toString());
+  }
+  Logger.log('runTestOrdersMinimal: Complete - added ' + added + ' orders');
   ui.alert('Done! Added ' + added + ' test orders.');
 }
 
@@ -98,6 +124,7 @@ function runTestOrdersMinimal() {
  * Remove all test orders (rows where Comments contains "TEST-").
  */
 function clearTestOrders() {
+  Logger.log('clearTestOrders: Starting test order deletion');
   var ui = SpreadsheetApp.getUi();
   var resp = ui.alert(
     'Clear Test Orders',
@@ -109,14 +136,26 @@ function clearTestOrders() {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(CONFIG.mainSheetName);
-  if (!sheet) { ui.alert('Sheet not found.'); return; }
+  if (!sheet) {
+    Logger.log('clearTestOrders: Main sheet not found');
+    ui.alert('Sheet not found.');
+    return;
+  }
 
   var col = _getColumnMap(sheet);
   var commentsIdx = col['Comments'];
-  if (commentsIdx === undefined) { ui.alert('Comments column not found.'); return; }
+  if (commentsIdx === undefined) {
+    Logger.log('clearTestOrders: Comments column not found');
+    ui.alert('Comments column not found.');
+    return;
+  }
 
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) { ui.alert('No data rows.'); return; }
+  if (lastRow < 2) {
+    Logger.log('clearTestOrders: No data rows to delete');
+    ui.alert('No data rows.');
+    return;
+  }
 
   var data = sheet.getRange(2, commentsIdx + 1, lastRow - 1, 1).getValues();
   var deleted = 0;
@@ -129,22 +168,34 @@ function clearTestOrders() {
     }
   }
 
+  Logger.log('clearTestOrders: Deleted ' + deleted + ' rows from main sheet');
+
   // Also clear from Live Orders and Completed Orders
   var viewSheets = ['Live Orders', 'Completed Orders'];
   for (var s = 0; s < viewSheets.length; s++) {
     var vSheet = ss.getSheetByName(viewSheets[s]);
-    if (!vSheet || vSheet.getLastRow() < 2) continue;
+    if (!vSheet || vSheet.getLastRow() < 2) {
+      Logger.log('clearTestOrders: Skipping ' + viewSheets[s] + ' (not found or empty)');
+      continue;
+    }
     var vCol = _getColumnMap(vSheet);
     var vCommentsIdx = vCol['Comments'];
-    if (vCommentsIdx === undefined) continue;
+    if (vCommentsIdx === undefined) {
+      Logger.log('clearTestOrders: Skipping ' + viewSheets[s] + ' (no Comments column)');
+      continue;
+    }
     var vData = vSheet.getRange(2, vCommentsIdx + 1, vSheet.getLastRow() - 1, 1).getValues();
+    var viewDeleted = 0;
     for (var vr = vData.length - 1; vr >= 0; vr--) {
       if (String(vData[vr][0]).indexOf('TEST-') !== -1) {
         vSheet.deleteRow(vr + 2);
+        viewDeleted++;
       }
     }
+    Logger.log('clearTestOrders: Deleted ' + viewDeleted + ' from ' + viewSheets[s]);
   }
 
+  Logger.log('clearTestOrders: Complete - deleted ' + deleted + ' total');
   ui.alert('Deleted ' + deleted + ' test order(s) from All Orders.\nAlso cleaned Live Orders and Completed Orders.');
 }
 
@@ -155,6 +206,7 @@ function clearTestOrders() {
  * in All Orders so you can review. Run clearTestOrders() when done.
  */
 function shipAllTestOrders() {
+  Logger.log('shipAllTestOrders: Starting test order shipment');
   var ui = SpreadsheetApp.getUi();
   var resp = ui.alert(
     'Ship All Test Orders',
@@ -171,7 +223,11 @@ function shipAllTestOrders() {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(CONFIG.mainSheetName);
-  if (!sheet) { ui.alert('All Orders sheet not found.'); return; }
+  if (!sheet) {
+    Logger.log('shipAllTestOrders: Main sheet not found');
+    ui.alert('All Orders sheet not found.');
+    return;
+  }
 
   var col = _getColumnMap(sheet);
   var commentsIdx = col['Comments'];
@@ -180,11 +236,17 @@ function shipAllTestOrders() {
   var shipDateIdx = col['Shipped Date'];
 
   if (commentsIdx === undefined || statusIdx === undefined) {
-    ui.alert('Required columns not found (Comments, Status).'); return;
+    Logger.log('shipAllTestOrders: Required columns not found');
+    ui.alert('Required columns not found (Comments, Status).');
+    return;
   }
 
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) { ui.alert('No data rows.'); return; }
+  if (lastRow < 2) {
+    Logger.log('shipAllTestOrders: No data rows');
+    ui.alert('No data rows.');
+    return;
+  }
 
   var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
   var now = new Date();
@@ -207,10 +269,12 @@ function shipAllTestOrders() {
     }
 
     shipped++;
+    Logger.log('shipAllTestOrders: Shipped row ' + rowNum);
   }
 
   SpreadsheetApp.flush();
 
+  Logger.log('shipAllTestOrders: Complete - shipped ' + shipped + ' orders');
   ui.alert(
     'Done!\n\n' +
     '✓ ' + shipped + ' test orders marked as Shipped\n' +

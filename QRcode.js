@@ -64,6 +64,7 @@ function getQRCodeUrl(qrData, size) {
 //   3. Bare barcode: 211657-01
 // ============================================================
 function parseQRData(code) {
+  Logger.log('parseQRData: Processing code length=' + (code ? code.length : 0));
   try {
     var fields = {
       sampleOrderNum: '', cargo: '', mark: '', container: '', reference: '',
@@ -194,6 +195,7 @@ function parseQRForQueue(code) {
 // Designed for small label stock (2.25" x 1.25" or similar).
 // ============================================================
 function generateArrivalLabels() {
+  Logger.log('generateArrivalLabels: Starting label generation');
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(CONFIG.mainSheetName);
   var ui = SpreadsheetApp.getUi();
@@ -395,6 +397,7 @@ function generateArrivalLabels() {
 // For square or tall label stock.
 // ============================================================
 function generateArrivalLabelsVertical() {
+  Logger.log('generateArrivalLabelsVertical: Starting vertical label generation');
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(CONFIG.mainSheetName);
   var ui = SpreadsheetApp.getUi();
@@ -543,6 +546,7 @@ function generateArrivalLabelsVertical() {
 // 🧪 TEST — QR Code API Verification
 // ============================================================
 function testQRCodeGeneration() {
+  Logger.log('testQRCodeGeneration: Testing QR code API');
   var ui = SpreadsheetApp.getUi();
   var testData = 'ORDER:TEST|CARGO:123|CONTAINER:MSMU1234567|CS_SAMPLE:211700-01';
   var qrUrl = getQRCodeUrl(testData, 200);
@@ -633,6 +637,7 @@ function _formatMarkDashes(mark) {
 
 
 function generateKeurigLabels() {
+  Logger.log('generateKeurigLabels: Starting Keurig label generation');
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(CONFIG.mainSheetName);
   var ui = SpreadsheetApp.getUi();
@@ -964,9 +969,14 @@ function generateKeurigLabels() {
   ui.showModalDialog(htmlOutput, 'Keurig Labels — ' + labels.length + ' label(s)');
 }
 function testQRUrl() {
-  var url = getQRCodeUrl('TEST123', 350);
-  Logger.log('URL: ' + url);
-  var response = UrlFetchApp.fetch(url);
-  Logger.log('Response code: ' + response.getResponseCode());
-  Logger.log('Response body: ' + response.getContentText().substring(0, 200));
+  Logger.log('testQRUrl: Testing QR URL fetch');
+  try {
+    var url = getQRCodeUrl('TEST123', 350);
+    Logger.log('URL: ' + url);
+    var response = UrlFetchApp.fetch(url);
+    Logger.log('Response code: ' + response.getResponseCode());
+    Logger.log('Response body: ' + response.getContentText().substring(0, 200));
+  } catch (e) {
+    Logger.log('testQRUrl error: ' + e.toString());
+  }
 }

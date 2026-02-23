@@ -77,24 +77,35 @@ function _removeBriefingTriggers() {
 // ============================================================
 
 function sendMorningBriefing() {
-  // Weekend skip
-  if (BRIEFING_CONFIG.skipWeekends) {
-    var dow = new Date().getDay();
-    if (dow === 0 || dow === 6) { Logger.log('Briefing: skipping weekend'); return; }
+  try {
+    // Weekend skip
+    if (BRIEFING_CONFIG.skipWeekends) {
+      var dow = new Date().getDay();
+      if (dow === 0 || dow === 6) { Logger.log('Briefing: skipping weekend'); return; }
+    }
+
+    if (!BRIEFING_CONFIG.recipientEmail) {
+      Logger.log('sendMorningBriefing: no recipient email configured');
+      return;
+    }
+
+    Logger.log('sendMorningBriefing: gathering data');
+    var b = _gatherBriefingData();
+    var html = _buildBriefingHtml(b);
+    var subject = BRIEFING_CONFIG.subjectPrefix + ' — ' + b.date;
+    var plain = 'CSS Briefing — ' + b.date +
+      '\nYesterday: ' + b.receivedYesterday.length + ' in, ' + b.shippedYesterday.length + ' out' +
+      '\nPending: ' + b.pendingUnscanned.length + ' unscanned, ' + b.scannedReady.length + ' ready';
+
+    MailApp.sendEmail({ to: BRIEFING_CONFIG.recipientEmail, subject: subject, body: plain, htmlBody: html });
+    Logger.log('Briefing sent to ' + BRIEFING_CONFIG.recipientEmail);
+
+    try { SpreadsheetApp.getUi().alert('✅ Briefing sent to ' + BRIEFING_CONFIG.recipientEmail); }
+    catch(e) {}
+  } catch(e) {
+    Logger.log('sendMorningBriefing error: ' + e);
+    try { SpreadsheetApp.getUi().alert('Briefing failed: ' + e); } catch(e2) {}
   }
-  
-  var b = _gatherBriefingData();
-  var html = _buildBriefingHtml(b);
-  var subject = BRIEFING_CONFIG.subjectPrefix + ' — ' + b.date;
-  var plain = 'CSS Briefing — ' + b.date +
-    '\nYesterday: ' + b.receivedYesterday.length + ' in, ' + b.shippedYesterday.length + ' out' +
-    '\nPending: ' + b.pendingUnscanned.length + ' unscanned, ' + b.scannedReady.length + ' ready';
-  
-  MailApp.sendEmail({ to: BRIEFING_CONFIG.recipientEmail, subject: subject, body: plain, htmlBody: html });
-  Logger.log('Briefing sent to ' + BRIEFING_CONFIG.recipientEmail);
-  
-  try { SpreadsheetApp.getUi().alert('✅ Briefing sent to ' + BRIEFING_CONFIG.recipientEmail); }
-  catch(e) {}
 }
 
 // ============================================================
@@ -141,7 +152,9 @@ function _gatherBriefingData() {
   };
   
   // ── Main Sheet ──
-  var mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
+  var mainSheetName = (typeof CONFIG !== 'undefined' && CONFIG.mainSheetName) ? CONFIG.mainSheetName : 'All Orders';
+  Logger.log('_gatherBriefingData: loading ' + mainSheetName);
+  var mainSheet = ss.getSheetByName(mainSheetName);
   if (mainSheet && mainSheet.getLastRow() >= 2) {
     var col = _getColumnMap(mainSheet);
     var data = mainSheet.getRange(2, 1, mainSheet.getLastRow() - 1, mainSheet.getLastColumn()).getValues();
@@ -203,7 +216,8 @@ function _gatherBriefingData() {
   }
   
   // ── Completed Orders ──
-  var compSheet = ss.getSheetByName(CONFIG.completedOrdersSheetName || 'Completed Orders');
+  var compSheetName = (typeof CONFIG !== 'undefined' && CONFIG.completedOrdersSheetName) ? CONFIG.completedOrdersSheetName : 'Completed Orders';
+  var compSheet = ss.getSheetByName(compSheetName);
   if (compSheet && compSheet.getLastRow() >= 2) {
     var compCol = _getColumnMap(compSheet);
     var compData = compSheet.getRange(2, 1, compSheet.getLastRow() - 1, compSheet.getLastColumn()).getValues();
@@ -248,21 +262,31 @@ function _gatherBriefingData() {
       var invCol = _getColumnMap(invSheet);
       var invData = invSheet.getRange(2, 1, invSheet.getLastRow() - 1, invSheet.getLastColumn()).getValues();
       
-      for (var k = 0; k < invData.length; k++) {
-        var inv = invData[k];
-        var invStatus = String(inv[invCol['Status']] || '').trim();
-        var dueDate = inv[invCol['Due Date']];
-        
-        if (invStatus === 'Sent' && dueDate) {
-          var dd = new Date(dueDate);
-          if (dd < today) {
-            b.overdueInvoices.push({
-              invoiceNum: String(inv[invCol['Invoice #']] || ''),
-              customer: String(inv[invCol['Customer']] || ''),
-              total: inv[invCol['Total']] || 0,
-              dueDate: Utilities.formatDate(dd, BRIEFING_CONFIG.timezone, 'MM/dd'),
-              daysOverdue: Math.floor((today.getTime() - _startOfDay(dd).getTime()) / 86400000)
-            });
+      var invStatusCol = invCol['Status'];
+      var invDueDateCol = invCol['Due Date'];
+      var invNumCol = invCol['Invoice #'];
+      var invCustCol = invCol['Customer'];
+      var invTotalCol = invCol['Total'];
+
+      if (invStatusCol === undefined || invDueDateCol === undefined) {
+        Logger.log('_gatherBriefingData: Invoices sheet missing expected columns');
+      } else {
+        for (var k = 0; k < invData.length; k++) {
+          var inv = invData[k];
+          var invStatus = String(inv[invStatusCol] || '').trim();
+          var dueDate = inv[invDueDateCol];
+
+          if (invStatus === 'Sent' && dueDate) {
+            var dd = new Date(dueDate);
+            if (dd < today) {
+              b.overdueInvoices.push({
+                invoiceNum: invNumCol !== undefined ? String(inv[invNumCol] || '') : '',
+                customer: invCustCol !== undefined ? String(inv[invCustCol] || '') : '',
+                total: invTotalCol !== undefined ? (inv[invTotalCol] || 0) : 0,
+                dueDate: Utilities.formatDate(dd, BRIEFING_CONFIG.timezone, 'MM/dd'),
+                daysOverdue: Math.floor((today.getTime() - _startOfDay(dd).getTime()) / 86400000)
+              });
+            }
           }
         }
       }

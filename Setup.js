@@ -3,9 +3,14 @@
 // ============================================================
 
 function setupSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
-  if (!mainSheet) mainSheet = ss.insertSheet(CONFIG.mainSheetName);
+  Logger.log('setupSheet: Starting sheet setup');
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
+    if (!mainSheet) {
+      Logger.log('setupSheet: Creating main sheet ' + CONFIG.mainSheetName);
+      mainSheet = ss.insertSheet(CONFIG.mainSheetName);
+    }
 
   const headers = [
     'Timestamp', 'CS Order #', 'CS Sample #', 'Sender', 'Receiver', 'Warehouse',
@@ -42,18 +47,33 @@ function setupSheet() {
     mainSheet.setColumnWidth(printColIdx + 1, 50);
   }
 
-  // Setup Scan Log sheet
-  let scanSheet = ss.getSheetByName(CONFIG.scanSheetName);
-  if (!scanSheet) scanSheet = ss.insertSheet(CONFIG.scanSheetName);
+    // Setup Scan Log sheet
+    let scanSheet = ss.getSheetByName(CONFIG.scanSheetName);
+    if (!scanSheet) {
+      Logger.log('setupSheet: Creating scan log sheet ' + CONFIG.scanSheetName);
+      scanSheet = ss.insertSheet(CONFIG.scanSheetName);
+    }
 
-  const scanHeaders = ['Scan Timestamp', 'CS Order #', 'CS Sample #', 'Sample Order #', 'Cargo #', 'Mark #', 'Container #', 'Reference', 'Description', 'Bag Count', 'Weight', 'Sample Weight', 'P #', 'S #', 'Warehouse', 'Shipping Process', 'Comments', 'Scanned By', 'Notes'];
-  scanSheet.getRange(1, 1, 1, scanHeaders.length).setValues([scanHeaders]);
-  scanSheet.getRange(1, 1, 1, scanHeaders.length).setFontWeight('bold');
-  scanSheet.setFrozenRows(1);
+    const scanHeaders = ['Scan Timestamp', 'CS Order #', 'CS Sample #', 'Sample Order #', 'Cargo #', 'Mark #', 'Container #', 'Reference', 'Description', 'Bag Count', 'Weight', 'Sample Weight', 'P #', 'S #', 'Warehouse', 'Shipping Process', 'Comments', 'Scanned By', 'Notes'];
+    if (scanSheet) {
+      scanSheet.getRange(1, 1, 1, scanHeaders.length).setValues([scanHeaders]);
+      scanSheet.getRange(1, 1, 1, scanHeaders.length).setFontWeight('bold');
+      scanSheet.setFrozenRows(1);
+    }
 
-  try { lockAllHeaders(); } catch(e) { Logger.log('Header lock skipped: ' + e); }
+    try {
+      Logger.log('setupSheet: Locking headers');
+      lockAllHeaders();
+    } catch(e) {
+      Logger.log('setupSheet: Header lock skipped: ' + e.toString());
+    }
 
-  SpreadsheetApp.getUi().alert('Setup Complete!\n\n✓ Tracking columns added\n✓ Print column with checkboxes added\n✓ Attachment columns added\n✓ Container tracking columns added\n✓ Header row locked\n✓ Existing rows set to "Received" status');
+    Logger.log('setupSheet: Complete');
+    SpreadsheetApp.getUi().alert('Setup Complete!\n\n✓ Tracking columns added\n✓ Print column with checkboxes added\n✓ Attachment columns added\n✓ Container tracking columns added\n✓ Header row locked\n✓ Existing rows set to "Received" status');
+  } catch (e) {
+    Logger.log('setupSheet error: ' + e.toString());
+    SpreadsheetApp.getUi().alert('Setup error: ' + e.toString());
+  }
 }
 
 function setupTrackingSystem() {
@@ -194,113 +214,133 @@ function setupCustomerEmailSheet() {
 }
 
 function setupConditionalFormatting() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(CONFIG.mainSheetName);
+  Logger.log('setupConditionalFormatting: Starting');
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(CONFIG.mainSheetName);
 
-  if (!sheet) {
-    SpreadsheetApp.getUi().alert(CONFIG.mainSheetName + ' sheet not found!');
-    return;
-  }
+    if (!sheet) {
+      Logger.log('setupConditionalFormatting: Sheet not found - ' + CONFIG.mainSheetName);
+      SpreadsheetApp.getUi().alert(CONFIG.mainSheetName + ' sheet not found!');
+      return;
+    }
 
-  var col = _getColumnMap(sheet);
-  var reviewCol = col['Needs Review'];
+    var col = _getColumnMap(sheet);
+    var reviewCol = col['Needs Review'];
 
-  if (reviewCol === undefined) {
-    SpreadsheetApp.getUi().alert('Add "Needs Review" column to your sheet first!');
-    return;
-  }
+    if (reviewCol === undefined) {
+      Logger.log('setupConditionalFormatting: Needs Review column not found');
+      SpreadsheetApp.getUi().alert('Add "Needs Review" column to your sheet first!');
+      return;
+    }
 
-  var lastRow = Math.max(sheet.getLastRow(), 1000);
-  var lastCol = sheet.getLastColumn();
-  var dataRange = sheet.getRange(2, 1, lastRow - 1, lastCol);
+    var lastRow = Math.max(sheet.getLastRow(), 1000);
+    var lastCol = sheet.getLastColumn();
+    var dataRange = sheet.getRange(2, 1, lastRow - 1, lastCol);
 
-  var colLetter = _colToLetter(reviewCol);
+    var colLetter = _colToLetter(reviewCol);
 
-  sheet.clearConditionalFormatRules();
+    sheet.clearConditionalFormatRules();
 
-  var rules = [];
+    var rules = [];
 
-  var yellowRule = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied('=$' + colLetter + '2<>""')
-    .setBackground('#fff3cd')
-    .setRanges([dataRange])
-    .build();
-  rules.push(yellowRule);
-
-  var statusCol = col['Status'];
-  if (statusCol !== undefined) {
-    var statusLetter = _colToLetter(statusCol);
-    var greenRule = SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=$' + statusLetter + '2="Completed"')
-      .setBackground('#d4edda')
+    var yellowRule = SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$' + colLetter + '2<>""')
+      .setBackground('#fff3cd')
       .setRanges([dataRange])
       .build();
-    rules.push(greenRule);
+    rules.push(yellowRule);
+
+    var statusCol = col['Status'];
+    if (statusCol !== undefined) {
+      var statusLetter = _colToLetter(statusCol);
+      var greenRule = SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=$' + statusLetter + '2="Completed"')
+        .setBackground('#d4edda')
+        .setRanges([dataRange])
+        .build();
+      rules.push(greenRule);
+    }
+
+    sheet.setConditionalFormatRules(rules);
+
+    Logger.log('setupConditionalFormatting: Complete - ' + rules.length + ' rules applied');
+    SpreadsheetApp.getUi().alert('✅ Conditional formatting applied!\n\n• Yellow = Needs Review\n• Green = Completed');
+  } catch (e) {
+    Logger.log('setupConditionalFormatting error: ' + e.toString());
+    SpreadsheetApp.getUi().alert('Error: ' + e.toString());
   }
-
-  sheet.setConditionalFormatRules(rules);
-
-  SpreadsheetApp.getUi().alert('✅ Conditional formatting applied!\n\n• Yellow = Needs Review\n• Green = Completed');
 }
 
 function setupFieldColumns() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(CONFIG.mainSheetName);
-  var ui = SpreadsheetApp.getUi();
-  if (!sheet) { ui.alert('Main sheet not found!'); return; }
-
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var lastCol = headers.length;
-
-  var newCols = ['Sample Type', 'Shipping Line', 'Shipping Notes', 'B/L #', 'Ship Status'];
-  var added = [];
-  newCols.forEach(function(colName) {
-    if (headers.indexOf(colName) === -1) {
-      lastCol++;
-      sheet.getRange(1, lastCol).setValue(colName).setFontWeight('bold');
-      added.push(colName);
+  Logger.log('setupFieldColumns: Starting');
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(CONFIG.mainSheetName);
+    var ui = SpreadsheetApp.getUi();
+    if (!sheet) {
+      Logger.log('setupFieldColumns: Main sheet not found');
+      ui.alert('Main sheet not found!');
+      return;
     }
-  });
 
-  headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var lastRow = Math.max(sheet.getLastRow(), 2);
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var lastCol = headers.length;
 
-  var stIdx = headers.indexOf('Sample Type');
-  if (stIdx !== -1 && lastRow > 1) {
-    var stRule = SpreadsheetApp.newDataValidation()
-      .requireValueInList(['Warehouse Sample', 'Photos With Sample', 'Container Supervision', 'FCC Grading-Cocoa', 'Exchange Samples'], true)
-      .setAllowInvalid(true).build();
-    sheet.getRange(2, stIdx + 1, lastRow - 1, 1).setDataValidation(stRule);
+    var newCols = ['Sample Type', 'Shipping Line', 'Shipping Notes', 'B/L #', 'Ship Status'];
+    var added = [];
+    newCols.forEach(function(colName) {
+      if (headers.indexOf(colName) === -1) {
+        lastCol++;
+        sheet.getRange(1, lastCol).setValue(colName).setFontWeight('bold');
+        added.push(colName);
+      }
+    });
+
+    headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var lastRow = Math.max(sheet.getLastRow(), 2);
+
+    var stIdx = headers.indexOf('Sample Type');
+    if (stIdx !== -1 && lastRow > 1) {
+      var stRule = SpreadsheetApp.newDataValidation()
+        .requireValueInList(['Warehouse Sample', 'Photos With Sample', 'Container Supervision', 'FCC Grading-Cocoa', 'Exchange Samples'], true)
+        .setAllowInvalid(true).build();
+      sheet.getRange(2, stIdx + 1, lastRow - 1, 1).setDataValidation(stRule);
+    }
+
+    var slIdx = headers.indexOf('Shipping Line');
+    if (slIdx !== -1 && lastRow > 1) {
+      var slRule = SpreadsheetApp.newDataValidation()
+        .requireValueInList(['MSC', 'ZIM', 'HAPAG-LLOYD', 'MAERSK', 'SEABOARD MARINE', 'ONE', 'CMA-CGM', 'EVERGREEN', 'COSCO'], true)
+        .setAllowInvalid(true).build();
+      sheet.getRange(2, slIdx + 1, lastRow - 1, 1).setDataValidation(slRule);
+    }
+
+    var csIdx = headers.indexOf('Container Status');
+    if (csIdx !== -1 && lastRow > 1) {
+      var csRule = SpreadsheetApp.newDataValidation()
+        .requireValueInList(['Afloat', 'Discharged At Pier', 'Picked Up By Warehouse', 'Stripped In', 'Not Selected', 'Customs Hold', 'Cancelled', 'Warehouse Investigating'], true)
+        .setAllowInvalid(true).build();
+      sheet.getRange(2, csIdx + 1, lastRow - 1, 1).setDataValidation(csRule);
+    }
+
+    var ssIdx = headers.indexOf('Ship Status');
+    if (ssIdx !== -1 && lastRow > 1) {
+      var ssRule = SpreadsheetApp.newDataValidation()
+        .requireValueInList(['Afloat', 'Landed', 'Discharged', 'At Warehouse', 'In Transit', 'Customs Hold', 'Released'], true)
+        .setAllowInvalid(true).build();
+      sheet.getRange(2, ssIdx + 1, lastRow - 1, 1).setDataValidation(ssRule);
+    }
+
+    Logger.log('setupFieldColumns: Complete - added ' + added.length + ' columns');
+    ui.alert('✅ Field Report columns ready!\n\n' +
+      (added.length > 0 ? 'Added: ' + added.join(', ') + '\n' : 'All columns already exist.\n') +
+      'Dropdowns set for: Sample Type, Shipping Line, Container Status, Ship Status\n' +
+      'Tip: Dropdowns allow custom values — just type to add new options.');
+  } catch (e) {
+    Logger.log('setupFieldColumns error: ' + e.toString());
+    SpreadsheetApp.getUi().alert('Error: ' + e.toString());
   }
-
-  var slIdx = headers.indexOf('Shipping Line');
-  if (slIdx !== -1 && lastRow > 1) {
-    var slRule = SpreadsheetApp.newDataValidation()
-      .requireValueInList(['MSC', 'ZIM', 'HAPAG-LLOYD', 'MAERSK', 'SEABOARD MARINE', 'ONE', 'CMA-CGM', 'EVERGREEN', 'COSCO'], true)
-      .setAllowInvalid(true).build();
-    sheet.getRange(2, slIdx + 1, lastRow - 1, 1).setDataValidation(slRule);
-  }
-
-  var csIdx = headers.indexOf('Container Status');
-  if (csIdx !== -1 && lastRow > 1) {
-    var csRule = SpreadsheetApp.newDataValidation()
-      .requireValueInList(['Afloat', 'Discharged At Pier', 'Picked Up By Warehouse', 'Stripped In', 'Not Selected', 'Customs Hold', 'Cancelled', 'Warehouse Investigating'], true)
-      .setAllowInvalid(true).build();
-    sheet.getRange(2, csIdx + 1, lastRow - 1, 1).setDataValidation(csRule);
-  }
-
-  var ssIdx = headers.indexOf('Ship Status');
-  if (ssIdx !== -1 && lastRow > 1) {
-    var ssRule = SpreadsheetApp.newDataValidation()
-      .requireValueInList(['Afloat', 'Landed', 'Discharged', 'At Warehouse', 'In Transit', 'Customs Hold', 'Released'], true)
-      .setAllowInvalid(true).build();
-    sheet.getRange(2, ssIdx + 1, lastRow - 1, 1).setDataValidation(ssRule);
-  }
-
-  ui.alert('✅ Field Report columns ready!\n\n' +
-    (added.length > 0 ? 'Added: ' + added.join(', ') + '\n' : 'All columns already exist.\n') +
-    'Dropdowns set for: Sample Type, Shipping Line, Container Status, Ship Status\n' +
-    'Tip: Dropdowns allow custom values — just type to add new options.');
 }
 
 function setupWarehouseEmails() {
@@ -413,36 +453,47 @@ function setupFieldReportEditors() {
 // ============================================================
 
 function lockAllHeaders() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheetNames = ['All Orders', 'Live Orders', 'Completed Orders', 'Scan Log'];
-  var locked = [];
+  Logger.log('lockAllHeaders: Starting header protection');
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetNames = ['All Orders', 'Live Orders', 'Completed Orders', 'Scan Log'];
+    var locked = [];
 
-  sheetNames.forEach(function(name) {
-    var sheet = ss.getSheetByName(name);
-    if (!sheet) return;
-
-    var lastCol = sheet.getLastColumn();
-    if (lastCol < 1) return;
-
-    var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
-    protections.forEach(function(p) {
-      if (p.getDescription() === 'Header Row - Locked') {
-        p.remove();
+    sheetNames.forEach(function(name) {
+      var sheet = ss.getSheetByName(name);
+      if (!sheet) {
+        Logger.log('lockAllHeaders: Sheet not found - ' + name);
+        return;
       }
+
+      var lastCol = sheet.getLastColumn();
+      if (lastCol < 1) return;
+
+      var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+      protections.forEach(function(p) {
+        if (p.getDescription() === 'Header Row - Locked') {
+          p.remove();
+        }
+      });
+
+      var protection = sheet.getRange(1, 1, 1, lastCol).protect()
+        .setDescription('Header Row - Locked');
+
+      protection.removeEditors(protection.getEditors());
+      if (protection.canDomainEdit()) {
+        protection.setDomainEdit(false);
+      }
+
+      locked.push(name);
+      Logger.log('lockAllHeaders: Locked ' + name);
     });
 
-    var protection = sheet.getRange(1, 1, 1, lastCol).protect()
-      .setDescription('Header Row - Locked');
-
-    protection.removeEditors(protection.getEditors());
-    if (protection.canDomainEdit()) {
-      protection.setDomainEdit(false);
-    }
-
-    locked.push(name);
-  });
-
-  return locked;
+    Logger.log('lockAllHeaders: Complete - locked ' + locked.length + ' sheets');
+    return locked;
+  } catch (e) {
+    Logger.log('lockAllHeaders error: ' + e.toString());
+    return [];
+  }
 }
 
 function lockAllHeadersWithAlert() {
@@ -455,24 +506,35 @@ function lockAllHeadersWithAlert() {
 }
 
 function unlockHeaders() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheetNames = ['All Orders', 'Live Orders', 'Completed Orders', 'Scan Log'];
-  var unlocked = [];
+  Logger.log('unlockHeaders: Starting header unlock');
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetNames = ['All Orders', 'Live Orders', 'Completed Orders', 'Scan Log'];
+    var unlocked = [];
 
-  sheetNames.forEach(function(name) {
-    var sheet = ss.getSheetByName(name);
-    if (!sheet) return;
-
-    var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
-    protections.forEach(function(p) {
-      if (p.getDescription() === 'Header Row - Locked') {
-        p.remove();
-        unlocked.push(name);
+    sheetNames.forEach(function(name) {
+      var sheet = ss.getSheetByName(name);
+      if (!sheet) {
+        Logger.log('unlockHeaders: Sheet not found - ' + name);
+        return;
       }
-    });
-  });
 
-  SpreadsheetApp.getUi().alert('🔓 Headers unlocked' + (unlocked.length > 0 ? ' on: ' + unlocked.join(', ') : ' (none were locked)'));
+      var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+      protections.forEach(function(p) {
+        if (p.getDescription() === 'Header Row - Locked') {
+          p.remove();
+          unlocked.push(name);
+          Logger.log('unlockHeaders: Unlocked ' + name);
+        }
+      });
+    });
+
+    Logger.log('unlockHeaders: Complete - unlocked ' + unlocked.length + ' sheets');
+    SpreadsheetApp.getUi().alert('🔓 Headers unlocked' + (unlocked.length > 0 ? ' on: ' + unlocked.join(', ') : ' (none were locked)'));
+  } catch (e) {
+    Logger.log('unlockHeaders error: ' + e.toString());
+    SpreadsheetApp.getUi().alert('Error: ' + e.toString());
+  }
 }
 
 // ============================================================
@@ -480,74 +542,83 @@ function unlockHeaders() {
 // ============================================================
 
 function syncPrintColumnToAllSheets() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const ui = SpreadsheetApp.getUi();
+  Logger.log('syncPrintColumnToAllSheets: Starting');
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ui = SpreadsheetApp.getUi();
 
-  const mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
-  if (!mainSheet) {
-    ui.alert('Main sheet not found!');
-    return;
-  }
-
-  const mainHeaders = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues()[0];
-  const printIdx = mainHeaders.indexOf('Print');
-
-  if (printIdx === -1) {
-    ui.alert('Print column not found in main sheet. Run Setup first.');
-    return;
-  }
-
-  const printColNum = printIdx + 1;
-  Logger.log('Print column found at position ' + printColNum);
-
-  const sheetsToSync = [
-    CONFIG.liveOrdersSheetName,
-    CONFIG.completedOrdersSheetName || 'Completed Orders',
-    'View - Danboy1217'
-  ];
-
-  const synced = [];
-
-  sheetsToSync.forEach(function(sheetName) {
-    const sheet = ss.getSheetByName(sheetName);
-    if (!sheet) {
-      Logger.log(sheetName + ': not found, skipping');
+    const mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
+    if (!mainSheet) {
+      Logger.log('syncPrintColumnToAllSheets: Main sheet not found');
+      ui.alert('Main sheet not found!');
       return;
     }
 
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    const existingPrintIdx = headers.indexOf('Print');
+    const mainHeaders = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues()[0];
+    const printIdx = mainHeaders.indexOf('Print');
 
-    if (existingPrintIdx === -1) {
-      if (sheet.getLastColumn() >= printColNum) {
-        sheet.insertColumnBefore(printColNum);
-        if (typeof _clearColumnMapCache === 'function') _clearColumnMapCache();
-      }
-      sheet.getRange(1, printColNum).setValue('Print');
-      sheet.getRange(1, printColNum).setFontWeight('bold');
-      sheet.setColumnWidth(printColNum, 50);
-
-      const lastRow = sheet.getLastRow();
-      if (lastRow > 1) {
-        sheet.getRange(2, printColNum, lastRow - 1, 1).insertCheckboxes();
-      }
-      synced.push(sheetName + ' (column inserted at ' + printColNum + ')');
-    } else if (existingPrintIdx !== printIdx) {
-      const lastRow = sheet.getLastRow();
-      if (lastRow > 1) {
-        sheet.getRange(2, existingPrintIdx + 1, lastRow - 1, 1).insertCheckboxes();
-      }
-      synced.push(sheetName + ' (checkboxes refreshed)');
-    } else {
-      const lastRow = sheet.getLastRow();
-      if (lastRow > 1) {
-        sheet.getRange(2, printColNum, lastRow - 1, 1).insertCheckboxes();
-      }
-      synced.push(sheetName + ' (verified)');
+    if (printIdx === -1) {
+      Logger.log('syncPrintColumnToAllSheets: Print column not found');
+      ui.alert('Print column not found in main sheet. Run Setup first.');
+      return;
     }
-  });
 
-  ui.alert('Print Column Sync Complete!\n\n• ' + synced.join('\n• '));
+    const printColNum = printIdx + 1;
+    Logger.log('syncPrintColumnToAllSheets: Print column found at position ' + printColNum);
+
+    const sheetsToSync = [
+      CONFIG.liveOrdersSheetName,
+      CONFIG.completedOrdersSheetName || 'Completed Orders',
+      'View - Danboy1217'
+    ];
+
+    const synced = [];
+
+    sheetsToSync.forEach(function(sheetName) {
+      const sheet = ss.getSheetByName(sheetName);
+      if (!sheet) {
+        Logger.log('syncPrintColumnToAllSheets: ' + sheetName + ' not found, skipping');
+        return;
+      }
+
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      const existingPrintIdx = headers.indexOf('Print');
+
+      if (existingPrintIdx === -1) {
+        if (sheet.getLastColumn() >= printColNum) {
+          sheet.insertColumnBefore(printColNum);
+          if (typeof _clearColumnMapCache === 'function') _clearColumnMapCache();
+        }
+        sheet.getRange(1, printColNum).setValue('Print');
+        sheet.getRange(1, printColNum).setFontWeight('bold');
+        sheet.setColumnWidth(printColNum, 50);
+
+        const lastRow = sheet.getLastRow();
+        if (lastRow > 1) {
+          sheet.getRange(2, printColNum, lastRow - 1, 1).insertCheckboxes();
+        }
+        synced.push(sheetName + ' (column inserted at ' + printColNum + ')');
+      } else if (existingPrintIdx !== printIdx) {
+        const lastRow = sheet.getLastRow();
+        if (lastRow > 1) {
+          sheet.getRange(2, existingPrintIdx + 1, lastRow - 1, 1).insertCheckboxes();
+        }
+        synced.push(sheetName + ' (checkboxes refreshed)');
+      } else {
+        const lastRow = sheet.getLastRow();
+        if (lastRow > 1) {
+          sheet.getRange(2, printColNum, lastRow - 1, 1).insertCheckboxes();
+        }
+        synced.push(sheetName + ' (verified)');
+      }
+    });
+
+    Logger.log('syncPrintColumnToAllSheets: Complete - synced ' + synced.length + ' sheets');
+    ui.alert('Print Column Sync Complete!\n\n• ' + synced.join('\n• '));
+  } catch (e) {
+    Logger.log('syncPrintColumnToAllSheets error: ' + e.toString());
+    SpreadsheetApp.getUi().alert('Error: ' + e.toString());
+  }
 }
 
 // ============================================================
@@ -555,6 +626,7 @@ function syncPrintColumnToAllSheets() {
 // ============================================================
 
 function setupEverything() {
+  Logger.log('setupEverything: Starting full system setup');
   var ui = SpreadsheetApp.getUi();
   var log = [];
 
@@ -573,76 +645,126 @@ function setupEverything() {
     '11. Time triggers\n\n' +
     'Click OK to begin.', ui.ButtonSet.OK_CANCEL);
 
-  // 1. Main sheet + headers
   try {
-    setupSheet();
-    log.push('✅ Main sheet + columns');
-  } catch(e) { log.push('❌ Main sheet: ' + e.message); }
-
-  // 2. Tracking system
-  try {
-    setupTrackingSystem();
-    log.push('✅ Tracking system (Scan Log, Live Orders, Completed)');
-  } catch(e) { log.push('❌ Tracking system: ' + e.message); }
-
-  // 3. Field columns + dropdowns
-  try {
-    setupFieldColumns();
-    log.push('✅ Field columns + dropdowns');
-  } catch(e) { log.push('❌ Field columns: ' + e.message); }
-
-  // 4. Conditional formatting
-  try {
-    setupConditionalFormatting();
-    log.push('✅ Conditional formatting');
-  } catch(e) { log.push('❌ Conditional formatting: ' + e.message); }
-
-  // 5. Print checkboxes
-  try {
-    if (typeof addPrintCheckboxColumn === 'function') {
-      addPrintCheckboxColumn();
-      log.push('✅ Print checkboxes');
+    // 1. Main sheet + headers
+    try {
+      setupSheet();
+      log.push('✅ Main sheet + columns');
+      Logger.log('setupEverything: Step 1 complete');
+    } catch(e) {
+      log.push('❌ Main sheet: ' + e.message);
+      Logger.log('setupEverything: Step 1 failed: ' + e.toString());
     }
-  } catch(e) { log.push('❌ Print checkboxes: ' + e.message); }
 
-  // 6. Header protection
-  try {
-    var locked = lockAllHeaders();
-    log.push('✅ Headers locked (' + (locked ? locked.length : 0) + ' sheets)');
-  } catch(e) { log.push('❌ Header lock: ' + e.message); }
-
-  // 7. Customer email sheet
-  try {
-    setupCustomerEmailSheet();
-    log.push('✅ Customer email sheet');
-  } catch(e) { log.push('❌ Customer emails: ' + e.message); }
-
-  // 8. Warehouse email sheet
-  try {
-    setupWarehouseEmails();
-    log.push('✅ Warehouse email sheet');
-  } catch(e) { log.push('❌ Warehouse emails: ' + e.message); }
-
-  // 9. Field report editors
-  try {
-    setupFieldReportEditors();
-    log.push('✅ Field report editors');
-  } catch(e) { log.push('❌ Field report editors: ' + e.message); }
-
-  // 10. Contacts
-  try {
-    if (typeof setupContacts === 'function') {
-      setupContacts();
-      log.push('✅ Contacts sheet');
+    // 2. Tracking system
+    try {
+      setupTrackingSystem();
+      log.push('✅ Tracking system (Scan Log, Live Orders, Completed)');
+      Logger.log('setupEverything: Step 2 complete');
+    } catch(e) {
+      log.push('❌ Tracking system: ' + e.message);
+      Logger.log('setupEverything: Step 2 failed: ' + e.toString());
     }
-  } catch(e) { log.push('❌ Contacts: ' + e.message); }
 
-  // 11. Time triggers
-  try {
-    createTimeTriggers();
-    log.push('✅ Time triggers');
-  } catch(e) { log.push('❌ Triggers: ' + e.message); }
+    // 3. Field columns + dropdowns
+    try {
+      setupFieldColumns();
+      log.push('✅ Field columns + dropdowns');
+      Logger.log('setupEverything: Step 3 complete');
+    } catch(e) {
+      log.push('❌ Field columns: ' + e.message);
+      Logger.log('setupEverything: Step 3 failed: ' + e.toString());
+    }
 
-  // Final report
-  ui.alert('🎉 Setup Complete!\n\n' + log.join('\n'));
+    // 4. Conditional formatting
+    try {
+      setupConditionalFormatting();
+      log.push('✅ Conditional formatting');
+      Logger.log('setupEverything: Step 4 complete');
+    } catch(e) {
+      log.push('❌ Conditional formatting: ' + e.message);
+      Logger.log('setupEverything: Step 4 failed: ' + e.toString());
+    }
+
+    // 5. Print checkboxes
+    try {
+      if (typeof addPrintCheckboxColumn === 'function') {
+        addPrintCheckboxColumn();
+        log.push('✅ Print checkboxes');
+      }
+      Logger.log('setupEverything: Step 5 complete');
+    } catch(e) {
+      log.push('❌ Print checkboxes: ' + e.message);
+      Logger.log('setupEverything: Step 5 failed: ' + e.toString());
+    }
+
+    // 6. Header protection
+    try {
+      var locked = lockAllHeaders();
+      log.push('✅ Headers locked (' + (locked ? locked.length : 0) + ' sheets)');
+      Logger.log('setupEverything: Step 6 complete');
+    } catch(e) {
+      log.push('❌ Header lock: ' + e.message);
+      Logger.log('setupEverything: Step 6 failed: ' + e.toString());
+    }
+
+    // 7. Customer email sheet
+    try {
+      setupCustomerEmailSheet();
+      log.push('✅ Customer email sheet');
+      Logger.log('setupEverything: Step 7 complete');
+    } catch(e) {
+      log.push('❌ Customer emails: ' + e.message);
+      Logger.log('setupEverything: Step 7 failed: ' + e.toString());
+    }
+
+    // 8. Warehouse email sheet
+    try {
+      setupWarehouseEmails();
+      log.push('✅ Warehouse email sheet');
+      Logger.log('setupEverything: Step 8 complete');
+    } catch(e) {
+      log.push('❌ Warehouse emails: ' + e.message);
+      Logger.log('setupEverything: Step 8 failed: ' + e.toString());
+    }
+
+    // 9. Field report editors
+    try {
+      setupFieldReportEditors();
+      log.push('✅ Field report editors');
+      Logger.log('setupEverything: Step 9 complete');
+    } catch(e) {
+      log.push('❌ Field report editors: ' + e.message);
+      Logger.log('setupEverything: Step 9 failed: ' + e.toString());
+    }
+
+    // 10. Contacts
+    try {
+      if (typeof setupContacts === 'function') {
+        setupContacts();
+        log.push('✅ Contacts sheet');
+      }
+      Logger.log('setupEverything: Step 10 complete');
+    } catch(e) {
+      log.push('❌ Contacts: ' + e.message);
+      Logger.log('setupEverything: Step 10 failed: ' + e.toString());
+    }
+
+    // 11. Time triggers
+    try {
+      createTimeTriggers();
+      log.push('✅ Time triggers');
+      Logger.log('setupEverything: Step 11 complete');
+    } catch(e) {
+      log.push('❌ Triggers: ' + e.message);
+      Logger.log('setupEverything: Step 11 failed: ' + e.toString());
+    }
+
+    // Final report
+    Logger.log('setupEverything: Complete');
+    ui.alert('🎉 Setup Complete!\n\n' + log.join('\n'));
+  } catch (e) {
+    Logger.log('setupEverything error: ' + e.toString());
+    ui.alert('Unexpected error: ' + e.toString());
+  }
 }

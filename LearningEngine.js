@@ -146,6 +146,7 @@ function logExtraction(sampleData, emailMeta) {
 // ============================================================
 
 function learnFromCorrections() {
+  try {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var ui = SpreadsheetApp.getUi();
 
@@ -268,10 +269,10 @@ function learnFromCorrections() {
       var newCount = existing.timesSeen + rule.count;
       var shouldAutoApply = newCount >= LEARN_CONFIG.minConfidence ? 'YES' : 'NO';
 
-      rulesSheet.getRange(existing.row, 6).setValue(rule.correctedValue);
-      rulesSheet.getRange(existing.row, 7).setValue(newCount);
-      rulesSheet.getRange(existing.row, 8).setValue(shouldAutoApply);
-      rulesSheet.getRange(existing.row, 9).setValue(now);
+      // Batch the 4 adjacent column updates into one setValues call (cols 6-9)
+      rulesSheet.getRange(existing.row, 6, 1, 4).setValues([[
+        rule.correctedValue, newCount, shouldAutoApply, now
+      ]]);
       updatedRules++;
     } else {
       var isAutoApply = rule.count >= LEARN_CONFIG.minConfidence ? 'YES' : 'NO';
@@ -303,6 +304,9 @@ function learnFromCorrections() {
     }
   }
 
+  Logger.log('learnFromCorrections: ' + corrections.length + ' corrections, ' +
+    newRules + ' new rules, ' + updatedRules + ' updated, ' + activeRules + ' active');
+
   ui.alert(
     'Learning Complete!\n\n' +
     corrections.length + ' correction(s) detected\n' +
@@ -312,6 +316,11 @@ function learnFromCorrections() {
     'Rules need ' + LEARN_CONFIG.minConfidence + '+ occurrences to auto-apply.\n' +
     'You can also set any rule to YES manually in the Correction Rules sheet.'
   );
+
+  } catch (e) {
+    Logger.log('learnFromCorrections error: ' + e);
+    try { SpreadsheetApp.getUi().alert('Error in Learn from Corrections: ' + e); } catch(e2) {}
+  }
 }
 
 

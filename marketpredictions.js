@@ -149,40 +149,47 @@ function getMarketPredictions_() {
  * Main entry point — creates or refreshes the Market Intel sheet
  */
 function buildMarketIntelSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(MARKET_CONFIG.sheetName);
-  
-  if (sheet) {
-    sheet.clear();
-  } else {
-    sheet = ss.insertSheet(MARKET_CONFIG.sheetName);
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(MARKET_CONFIG.sheetName);
+
+    if (sheet) {
+      sheet.clear();
+    } else {
+      sheet = ss.insertSheet(MARKET_CONFIG.sheetName);
+    }
+
+    Logger.log('buildMarketIntelSheet: building ' + MARKET_CONFIG.sheetName);
+    let row = 1;
+
+    // ---- HEADER ----
+    row = writeHeader_(sheet, row);
+
+    // ---- CURRENT PRICES ----
+    row = writePriceSnapshot_(sheet, row);
+
+    // ---- FUNDAMENTALS ----
+    row = writeFundamentals_(sheet, row);
+
+    // ---- PREDICTIONS TABLE ----
+    row = writePredictions_(sheet, row);
+
+    // ---- CSS IMPACT SUMMARY ----
+    row = writeCSSImpact_(sheet, row);
+
+    // ---- FORMATTING ----
+    formatSheet_(sheet, row);
+
+    Logger.log('buildMarketIntelSheet: done, ' + (row - 1) + ' rows written');
+    SpreadsheetApp.getActiveSpreadsheet().toast(
+      'Market Intel updated for ' + MARKET_CONFIG.lastUpdated,
+      'Market Predictions',
+      5
+    );
+  } catch(e) {
+    Logger.log('buildMarketIntelSheet error: ' + e);
+    try { SpreadsheetApp.getUi().alert('Market Intel build failed: ' + e); } catch(e2) {}
   }
-  
-  let row = 1;
-  
-  // ---- HEADER ----
-  row = writeHeader_(sheet, row);
-  
-  // ---- CURRENT PRICES ----
-  row = writePriceSnapshot_(sheet, row);
-  
-  // ---- FUNDAMENTALS ----
-  row = writeFundamentals_(sheet, row);
-  
-  // ---- PREDICTIONS TABLE ----
-  row = writePredictions_(sheet, row);
-  
-  // ---- CSS IMPACT SUMMARY ----
-  row = writeCSSImpact_(sheet, row);
-  
-  // ---- FORMATTING ----
-  formatSheet_(sheet, row);
-  
-  SpreadsheetApp.getActiveSpreadsheet().toast(
-    'Market Intel updated for ' + MARKET_CONFIG.lastUpdated, 
-    'Market Predictions', 
-    5
-  );
 }
 
 // ============================================================
@@ -325,13 +332,22 @@ function writePredictions_(sheet, startRow) {
     .setBackground('#1a1a2e').setFontColor('#e0e0e0').setFontWeight('bold').setFontSize(9);
   r++;
   
-  predictions.forEach(function(p) {
-    const row = [p.commodity, p.timeframe, p.prediction, p.confidence, 
-                 p.keyDrivers, p.riskFactors, p.cssImpact, p.priceRange];
-    sheet.getRange(r, 1, 1, 8).setValues([row]);
-    
+  // Batch all prediction rows into a single setValues call
+  const predRowData = predictions.map(function(p) {
+    return [p.commodity, p.timeframe, p.prediction, p.confidence,
+            p.keyDrivers, p.riskFactors, p.cssImpact, p.priceRange];
+  });
+  if (predRowData.length > 0) {
+    sheet.getRange(r, 1, predRowData.length, 8).setValues(predRowData);
+  }
+
+  // Second pass: per-cell coloring (cannot be batched — each cell has a different color)
+  for (let pi = 0; pi < predictions.length; pi++) {
+    const p = predictions[pi];
+    const rowR = r + pi;
+
     // Color confidence
-    const confCell = sheet.getRange(r, 4);
+    const confCell = sheet.getRange(rowR, 4);
     if (p.confidence === 'HIGH') {
       confCell.setBackground('#1b4332').setFontColor('#95d5b2');
     } else if (p.confidence === 'MEDIUM') {
@@ -340,9 +356,9 @@ function writePredictions_(sheet, startRow) {
       confCell.setBackground('#4a2020').setFontColor('#e0a0a0');
     }
     confCell.setFontWeight('bold').setHorizontalAlignment('center');
-    
+
     // Color CSS impact
-    const impactCell = sheet.getRange(r, 7);
+    const impactCell = sheet.getRange(rowR, 7);
     const impact = p.cssImpact.toUpperCase();
     if (impact.includes('VOLUME UP') || impact.includes('OPPORTUNITY') || impact.includes('+10')) {
       impactCell.setBackground('#1b4332').setFontColor('#95d5b2');
@@ -352,11 +368,9 @@ function writePredictions_(sheet, startRow) {
       impactCell.setBackground('#2a2a3a').setFontColor('#c0c0e0');
     }
     impactCell.setFontWeight('bold').setFontSize(9);
-    
-    r++;
-  });
-  
-  r++;
+  }
+
+  r += predictions.length + 1;
   return r;
 }
 
@@ -391,12 +405,15 @@ function writeCSSImpact_(sheet, startRow) {
     .setBackground('#1a1a2e').setFontColor('#e0e0e0').setFontWeight('bold').setFontSize(9);
   r++;
   
-  outlook.forEach(function(row) {
-    sheet.getRange(r, 1, 1, 8).setValues([row]);
-    
-    // Color direction
-    const dirCell = sheet.getRange(r, 2);
-    const dir = row[1].toUpperCase();
+  // Batch all outlook rows into a single setValues call
+  if (outlook.length > 0) {
+    sheet.getRange(r, 1, outlook.length, 8).setValues(outlook);
+  }
+
+  // Second pass: per-cell coloring for direction column
+  for (let oi = 0; oi < outlook.length; oi++) {
+    const dirCell = sheet.getRange(r + oi, 2);
+    const dir = outlook[oi][1].toUpperCase();
     if (dir.includes('UP')) {
       dirCell.setBackground('#1b4332').setFontColor('#95d5b2');
     } else if (dir.includes('DOWN')) {
@@ -407,10 +424,9 @@ function writeCSSImpact_(sheet, startRow) {
       dirCell.setBackground('#1b4332').setFontColor('#95d5b2');
     }
     dirCell.setFontWeight('bold');
-    
-    r++;
-  });
-  
+  }
+
+  r += outlook.length;
   return r + 1;
 }
 
@@ -447,10 +463,11 @@ function formatSheet_(sheet, lastRow) {
   allRange.setVerticalAlignment('top');
   allRange.setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
   
-  // Data rows — dark theme base
-  sheet.getRange(1, 1, lastRow, 8).setBackground('#0d1117');
-  sheet.getRange(1, 1, lastRow, 8).setFontColor('#c9d1d9');
-  sheet.getRange(1, 1, lastRow, 8).setFontSize(10);
+  // Data rows — dark theme base (batched into one range reference)
+  sheet.getRange(1, 1, lastRow, 8)
+    .setBackground('#0d1117')
+    .setFontColor('#c9d1d9')
+    .setFontSize(10);
   
   // Borders
   allRange.setBorder(true, true, true, true, true, true, '#30363d', SpreadsheetApp.BorderStyle.SOLID);

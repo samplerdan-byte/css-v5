@@ -11,18 +11,27 @@
 // ============================================================
 
 function processManualOrderEntry(orderData) {
+  if (!orderData || typeof orderData !== 'object') {
+    return { success: false, message: 'No order data provided.' };
+  }
+  if (!Array.isArray(orderData.samples) || orderData.samples.length === 0) {
+    return { success: false, message: 'No samples provided. Add at least one sample.' };
+  }
+
+  Logger.log('processManualOrderEntry: ' + orderData.samples.length + ' sample(s), customer=' + (orderData.customer || 'none'));
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(CONFIG.mainSheetName);
-  
-  if (!sheet) return { success: false, message: 'Sheet not found' };
-  
+
+  if (!sheet) return { success: false, message: 'Sheet "' + CONFIG.mainSheetName + '" not found.' };
+
   if (orderData.samples && orderData.samples.length > 0) {
     var validation = validateOrderData(orderData.samples[0]);
     if (!validation.valid) {
       return { success: false, message: '⚠️ Validation error:\n' + validation.errors.join('\n') };
     }
   }
-  
+
   try {
     const results = [];
     const customer = (typeof CUSTOMERS !== 'undefined' && CUSTOMERS[orderData.customer]) 
@@ -87,9 +96,11 @@ function processManualOrderEntry(orderData) {
     
     // Single live update after all samples added (avoids re-triggering sidebar)
     try { updateLiveOrdersView(); } catch (e) { Logger.log('Live update after manual entry: ' + e); }
-    
+
+    Logger.log('processManualOrderEntry success: added ' + results.length + ' sample(s)');
     return { success: true, message: '✅ Added ' + results.length + ' sample(s): ' + results.join(', ') };
   } catch (e) {
+    Logger.log('processManualOrderEntry error: ' + e.toString());
     return { success: false, message: 'Error: ' + e.toString() };
   }
 }

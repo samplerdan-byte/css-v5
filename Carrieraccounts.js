@@ -10,38 +10,44 @@
 // ============================================================
 
 function addCarrierColumns() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('Contacts');
-  if (!sheet) {
-    SpreadsheetApp.getUi().alert('Contacts sheet not found. Run setupContacts() first.');
-    return;
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('Contacts');
+    if (!sheet) {
+      SpreadsheetApp.getUi().alert('Contacts sheet not found. Run setupContacts() first.');
+      return;
+    }
+
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+    // Check if columns already exist
+    if (headers.indexOf('FedEx Account') >= 0) {
+      SpreadsheetApp.getUi().alert('Carrier columns already exist.');
+      return;
+    }
+
+    var nextCol = headers.length + 1;
+    // Batch the three header cells into one setValues call
+    sheet.getRange(1, nextCol, 1, 3).setValues([['FedEx Account', 'UPS Account', 'Preferred Carrier']])
+      .setFontWeight('bold').setBackground('#2E5339').setFontColor('#fff');
+
+    sheet.setColumnWidth(nextCol, 130);
+    sheet.setColumnWidth(nextCol + 1, 110);
+    sheet.setColumnWidth(nextCol + 2, 120);
+
+    // Add dropdown validation for Preferred Carrier
+    var carrierRule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['FedEx', 'UPS', 'USPS', 'DHL', 'FedEx Ground', 'UPS Ground'])
+      .setAllowInvalid(true)
+      .build();
+    sheet.getRange(2, nextCol + 2, 500, 1).setDataValidation(carrierRule);
+
+    Logger.log('addCarrierColumns: added columns at col ' + nextCol);
+    SpreadsheetApp.getUi().alert('Added FedEx Account, UPS Account, and Preferred Carrier columns to Contacts sheet.');
+  } catch (e) {
+    Logger.log('addCarrierColumns ERROR: ' + e.message);
+    SpreadsheetApp.getUi().alert('Error adding carrier columns: ' + e.message);
   }
-  
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  
-  // Check if columns already exist
-  if (headers.indexOf('FedEx Account') >= 0) {
-    SpreadsheetApp.getUi().alert('Carrier columns already exist.');
-    return;
-  }
-  
-  var nextCol = headers.length + 1;
-  sheet.getRange(1, nextCol).setValue('FedEx Account').setFontWeight('bold').setBackground('#2E5339').setFontColor('#fff');
-  sheet.getRange(1, nextCol + 1).setValue('UPS Account').setFontWeight('bold').setBackground('#2E5339').setFontColor('#fff');
-  sheet.getRange(1, nextCol + 2).setValue('Preferred Carrier').setFontWeight('bold').setBackground('#2E5339').setFontColor('#fff');
-  
-  sheet.setColumnWidth(nextCol, 130);
-  sheet.setColumnWidth(nextCol + 1, 110);
-  sheet.setColumnWidth(nextCol + 2, 120);
-  
-  // Add dropdown validation for Preferred Carrier
-  var carrierRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['FedEx', 'UPS', 'USPS', 'DHL', 'FedEx Ground', 'UPS Ground'])
-    .setAllowInvalid(true)
-    .build();
-  sheet.getRange(2, nextCol + 2, 500, 1).setDataValidation(carrierRule);
-  
-  SpreadsheetApp.getUi().alert('✅ Added FedEx Account, UPS Account, and Preferred Carrier columns to Contacts sheet.');
 }
 
 
@@ -50,6 +56,7 @@ function addCarrierColumns() {
 // ============================================================
 
 function populateCarrierAccounts() {
+  try {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Contacts');
   if (!sheet) { SpreadsheetApp.getUi().alert('Contacts sheet not found.'); return; }
@@ -211,21 +218,26 @@ function populateCarrierAccounts() {
   var matched = 0;
   var unmatched = [];
   var added = 0;
-  
+
+  // pending[rowIndex] = { fedex: val, ups: val } — accumulates writes before bulk flush
+  var pendingFedex = {};  // key = 0-based data row index, value = account string
+  var pendingUps   = {};
+  var newAppendRows = []; // rows to appendRow after bulk write (unmatched contacts)
+
   // ── Match helper: try exact, then contains, then fuzzy ──
   function findContactRows(clipName) {
     var lower = clipName.toLowerCase().trim();
-    
+
     // Exact match
     if (companyIndex[lower]) return companyIndex[lower];
-    
+
     // Contains match (either direction)
     for (var key in companyIndex) {
       if (key.indexOf(lower) >= 0 || lower.indexOf(key) >= 0) {
         return companyIndex[key];
       }
     }
-    
+
     // Partial word match (first significant word)
     var words = lower.split(/[\s\/&,]+/).filter(function(w) { return w.length > 3; });
     for (var w = 0; w < words.length; w++) {
@@ -235,54 +247,48 @@ function populateCarrierAccounts() {
         }
       }
     }
-    
+
     return null;
   }
-  
-  // ── Apply FedEx accounts ──
+
+  // ── Apply FedEx accounts (accumulate, don't write yet) ──
   for (var f = 0; f < fedexAccounts.length; f++) {
     var name = fedexAccounts[f][0];
     var acct = fedexAccounts[f][1];
     var rows = findContactRows(name);
     if (rows) {
       for (var r = 0; r < rows.length; r++) {
-        var rowNum = rows[r] + 2; // 1-indexed, skip header
-        var existing = sheet.getRange(rowNum, fedexCol + 1).getValue();
-        if (!existing) {
-          sheet.getRange(rowNum, fedexCol + 1).setValue(acct);
+        var idx = rows[r]; // 0-based index into data[]
+        var existingFedex = String(data[idx][fedexCol] || '').trim();
+        if (!existingFedex) {
+          pendingFedex[idx] = acct;
           matched++;
         }
       }
     } else {
       unmatched.push('FedEx: ' + name + ' = ' + acct);
-      // Add as new contact
-      var newRow = [
-        'Receiver', name, '', '', '', '', '', '', '', '',
-      ];
-      // Pad to reach FedEx column
+      // Build new row — will be appended after bulk writes
+      var newRow = ['Receiver', name, '', '', '', '', '', '', '', ''];
       while (newRow.length < fedexCol) newRow.push('');
       newRow.push(acct); // FedEx
       newRow.push('');    // UPS
       newRow.push('');    // Preferred
-      sheet.appendRow(newRow);
+      newAppendRows.push({ row: newRow, fedexAcct: acct, upsAcct: '', name: name });
       added++;
-      // Update index
-      var newIdx = sheet.getLastRow() - 2;
-      companyIndex[name.toLowerCase()] = [newIdx];
     }
   }
-  
-  // ── Apply UPS accounts ──
+
+  // ── Apply UPS accounts (accumulate) ──
   for (var u = 0; u < upsAccounts.length; u++) {
     var name2 = upsAccounts[u][0];
     var acct2 = upsAccounts[u][1];
     var rows2 = findContactRows(name2);
     if (rows2) {
       for (var r2 = 0; r2 < rows2.length; r2++) {
-        var rowNum2 = rows2[r2] + 2;
-        var existing2 = sheet.getRange(rowNum2, upsCol + 1).getValue();
-        if (!existing2) {
-          sheet.getRange(rowNum2, upsCol + 1).setValue(acct2);
+        var idx2 = rows2[r2];
+        var existingUps = String(data[idx2][upsCol] || '').trim();
+        if (!existingUps) {
+          pendingUps[idx2] = acct2;
           matched++;
         }
       }
@@ -293,23 +299,49 @@ function populateCarrierAccounts() {
       newRow2.push('');    // FedEx
       newRow2.push(acct2); // UPS
       newRow2.push('');    // Preferred
-      sheet.appendRow(newRow2);
+      newAppendRows.push({ row: newRow2, fedexAcct: '', upsAcct: acct2, name: name2 });
       added++;
-      companyIndex[name2.toLowerCase()] = [sheet.getLastRow() - 2];
     }
   }
-  
-  // ── Auto-set preferred carrier based on what's available ──
+
+  // ── Batch-write FedEx and UPS updates to existing rows ──
+  // Write each account column separately as a sparse update.
+  // Collect all row indices that need writes, group by contiguous blocks where possible,
+  // or fall back to individual range writes (still far fewer API calls than before).
+  function flushPendingColumn(pending, colNum) {
+    // Sort row indices and write each individually (rows are non-contiguous)
+    var indices = Object.keys(pending);
+    for (var pi = 0; pi < indices.length; pi++) {
+      var rowNum = parseInt(indices[pi]) + 2; // 1-indexed sheet row (skip header)
+      sheet.getRange(rowNum, colNum).setValue(pending[indices[pi]]);
+    }
+  }
+  flushPendingColumn(pendingFedex, fedexCol + 1);
+  flushPendingColumn(pendingUps,   upsCol + 1);
+  Logger.log('populateCarrierAccounts: flushed ' + Object.keys(pendingFedex).length +
+             ' FedEx + ' + Object.keys(pendingUps).length + ' UPS writes');
+
+  // Append new unmatched contacts
+  for (var an = 0; an < newAppendRows.length; an++) {
+    sheet.appendRow(newAppendRows[an].row);
+    companyIndex[newAppendRows[an].name.toLowerCase()] = [sheet.getLastRow() - 2];
+  }
+
+  // ── Auto-set preferred carrier — re-read after appends, batch-write ──
   var allData = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var prefUpdates = []; // { rowNum, value }
   for (var p = 0; p < allData.length; p++) {
     var hasFedex = String(allData[p][fedexCol] || '').trim();
-    var hasUps = String(allData[p][upsCol] || '').trim();
-    var hasPref = String(allData[p][preferredCol] || '').trim();
+    var hasUps   = String(allData[p][upsCol]   || '').trim();
+    var hasPref  = String(allData[p][preferredCol] || '').trim();
     if (!hasPref && (hasFedex || hasUps)) {
-      // Default to FedEx if they have it, otherwise UPS
-      sheet.getRange(p + 2, preferredCol + 1).setValue(hasFedex ? 'FedEx' : 'UPS');
+      prefUpdates.push({ rowNum: p + 2, value: hasFedex ? 'FedEx' : 'UPS' });
     }
   }
+  for (var pu = 0; pu < prefUpdates.length; pu++) {
+    sheet.getRange(prefUpdates[pu].rowNum, preferredCol + 1).setValue(prefUpdates[pu].value);
+  }
+  Logger.log('populateCarrierAccounts: set preferred carrier on ' + prefUpdates.length + ' rows');
   
   var msg = '✅ Carrier accounts populated!\n\n' +
     'Matched & updated: ' + matched + ' entries\n' +
@@ -319,7 +351,12 @@ function populateCarrierAccounts() {
     if (unmatched.length > 15) msg += '\n... and ' + (unmatched.length - 15) + ' more';
   }
   
+  Logger.log('populateCarrierAccounts: matched=' + matched + ' added=' + added + ' unmatched=' + unmatched.length);
   SpreadsheetApp.getUi().alert(msg);
+  } catch (e) {
+    Logger.log('populateCarrierAccounts ERROR: ' + e.message);
+    SpreadsheetApp.getUi().alert('Error populating carrier accounts: ' + e.message);
+  }
 }
 
 
@@ -328,52 +365,64 @@ function populateCarrierAccounts() {
 // ============================================================
 
 function lookupCarrierByCompany(companyName) {
-  if (!companyName) return null;
-  
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('Contacts');
-  if (!sheet || sheet.getLastRow() < 2) return null;
-  
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var fedexCol = headers.indexOf('FedEx Account');
-  var upsCol = headers.indexOf('UPS Account');
-  var preferredCol = headers.indexOf('Preferred Carrier');
-  if (fedexCol === -1 && upsCol === -1) return null;
-  
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
-  var searchName = String(companyName).trim().toLowerCase();
-  
-  // Try exact match on company name (col index 1)
-  for (var i = 0; i < data.length; i++) {
-    var company = String(data[i][1]).trim().toLowerCase();
-    if (company === searchName) {
-      return _buildCarrierResult(data[i], fedexCol, upsCol, preferredCol);
+  try {
+    if (!companyName) return null;
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('Contacts');
+    if (!sheet || sheet.getLastRow() < 2) return null;
+
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var fedexCol = headers.indexOf('FedEx Account');
+    var upsCol = headers.indexOf('UPS Account');
+    var preferredCol = headers.indexOf('Preferred Carrier');
+    if (fedexCol === -1 && upsCol === -1) return null;
+
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    var searchName = String(companyName).trim().toLowerCase();
+    if (!searchName) return null;
+
+    // Try exact match on company name (col index 1)
+    for (var i = 0; i < data.length; i++) {
+      var company = String(data[i][1]).trim().toLowerCase();
+      if (company === searchName) {
+        Logger.log('lookupCarrierByCompany: exact match for "' + companyName + '"');
+        return _buildCarrierResult(data[i], fedexCol, upsCol, preferredCol);
+      }
     }
-  }
-  
-  // Try contains match
-  for (var j = 0; j < data.length; j++) {
-    var company2 = String(data[j][1]).trim().toLowerCase();
-    if (company2.indexOf(searchName) >= 0 || searchName.indexOf(company2) >= 0) {
-      return _buildCarrierResult(data[j], fedexCol, upsCol, preferredCol);
+
+    // Try contains match
+    for (var j = 0; j < data.length; j++) {
+      var company2 = String(data[j][1]).trim().toLowerCase();
+      if (company2.indexOf(searchName) >= 0 || searchName.indexOf(company2) >= 0) {
+        Logger.log('lookupCarrierByCompany: contains match for "' + companyName + '"');
+        return _buildCarrierResult(data[j], fedexCol, upsCol, preferredCol);
+      }
     }
-  }
-  
-  // Try word-level match (for partial names like "Volcafe" matching "Volcafe Specialty")
-  var words = searchName.split(/[\s\/&,\-]+/).filter(function(w) { return w.length > 3; });
-  if (words.length > 0) {
-    for (var k = 0; k < data.length; k++) {
-      var company3 = String(data[k][1]).trim().toLowerCase();
-      for (var w = 0; w < words.length; w++) {
-        if (company3.indexOf(words[w]) >= 0) {
-          var result = _buildCarrierResult(data[k], fedexCol, upsCol, preferredCol);
-          if (result && (result.fedex || result.ups)) return result;
+
+    // Try word-level match (for partial names like "Volcafe" matching "Volcafe Specialty")
+    var words = searchName.split(/[\s\/&,\-]+/).filter(function(w) { return w.length > 3; });
+    if (words.length > 0) {
+      for (var k = 0; k < data.length; k++) {
+        var company3 = String(data[k][1]).trim().toLowerCase();
+        for (var w = 0; w < words.length; w++) {
+          if (company3.indexOf(words[w]) >= 0) {
+            var result = _buildCarrierResult(data[k], fedexCol, upsCol, preferredCol);
+            if (result && (result.fedex || result.ups)) {
+              Logger.log('lookupCarrierByCompany: word match for "' + companyName + '"');
+              return result;
+            }
+          }
         }
       }
     }
+
+    Logger.log('lookupCarrierByCompany: no match for "' + companyName + '"');
+    return null;
+  } catch (e) {
+    Logger.log('lookupCarrierByCompany ERROR: ' + e.message);
+    return null;
   }
-  
-  return null;
 }
 
 function _buildCarrierResult(row, fedexCol, upsCol, preferredCol) {
@@ -391,45 +440,51 @@ function _buildCarrierResult(row, fedexCol, upsCol, preferredCol) {
 // ============================================================
 
 function getContactsListWithCarrier() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('Contacts');
-  if (!sheet || sheet.getLastRow() < 2) return { shippers: [], receivers: [] };
-  
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var fedexCol = headers.indexOf('FedEx Account');
-  var upsCol = headers.indexOf('UPS Account');
-  var preferredCol = headers.indexOf('Preferred Carrier');
-  
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
-  var shippers = [];
-  var receivers = [];
-  
-  for (var i = 0; i < data.length; i++) {
-    var type = String(data[i][0]).trim();
-    var company = String(data[i][1]).trim();
-    if (!company) continue;
-    
-    var contact = {
-      company: company,
-      attention: String(data[i][2] || '').trim(),
-      address: String(data[i][3] || '').trim(),
-      city: String(data[i][4] || '').trim(),
-      state: String(data[i][5] || '').trim(),
-      zip: String(data[i][6] || '').trim(),
-      phone: String(data[i][7] || '').trim(),
-      email: String(data[i][8] || '').trim(),
-      notes: String(data[i][9] || '').trim(),
-      fedex: fedexCol >= 0 ? String(data[i][fedexCol] || '').trim() : '',
-      ups: upsCol >= 0 ? String(data[i][upsCol] || '').trim() : '',
-      preferredCarrier: preferredCol >= 0 ? String(data[i][preferredCol] || '').trim() : ''
-    };
-    
-    if (type === 'Shipper') shippers.push(contact);
-    else if (type === 'Receiver') receivers.push(contact);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('Contacts');
+    if (!sheet || sheet.getLastRow() < 2) return { shippers: [], receivers: [] };
+
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var fedexCol = headers.indexOf('FedEx Account');
+    var upsCol = headers.indexOf('UPS Account');
+    var preferredCol = headers.indexOf('Preferred Carrier');
+
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    var shippers = [];
+    var receivers = [];
+
+    for (var i = 0; i < data.length; i++) {
+      var type = String(data[i][0]).trim();
+      var company = String(data[i][1]).trim();
+      if (!company) continue;
+
+      var contact = {
+        company: company,
+        attention: String(data[i][2] || '').trim(),
+        address: String(data[i][3] || '').trim(),
+        city: String(data[i][4] || '').trim(),
+        state: String(data[i][5] || '').trim(),
+        zip: String(data[i][6] || '').trim(),
+        phone: String(data[i][7] || '').trim(),
+        email: String(data[i][8] || '').trim(),
+        notes: String(data[i][9] || '').trim(),
+        fedex: fedexCol >= 0 ? String(data[i][fedexCol] || '').trim() : '',
+        ups: upsCol >= 0 ? String(data[i][upsCol] || '').trim() : '',
+        preferredCarrier: preferredCol >= 0 ? String(data[i][preferredCol] || '').trim() : ''
+      };
+
+      if (type === 'Shipper') shippers.push(contact);
+      else if (type === 'Receiver') receivers.push(contact);
+    }
+
+    shippers.sort(function(a, b) { return a.company.localeCompare(b.company); });
+    receivers.sort(function(a, b) { return a.company.localeCompare(b.company); });
+
+    Logger.log('getContactsListWithCarrier: ' + shippers.length + ' shippers, ' + receivers.length + ' receivers');
+    return { shippers: shippers, receivers: receivers };
+  } catch (e) {
+    Logger.log('getContactsListWithCarrier ERROR: ' + e.message);
+    return { shippers: [], receivers: [] };
   }
-  
-  shippers.sort(function(a, b) { return a.company.localeCompare(b.company); });
-  receivers.sort(function(a, b) { return a.company.localeCompare(b.company); });
-  
-  return { shippers: shippers, receivers: receivers };
 }

@@ -47,48 +47,69 @@ function onOpen() {
 // ============================================================
 
 function createTimeTriggers() {
-  var triggers = ScriptApp.getProjectTriggers();
-  triggers.forEach(function(trigger) {
-    if (trigger.getHandlerFunction() === 'processPDFsFromGmail' ||
-        trigger.getHandlerFunction() === 'scheduledBackup' ||
-        trigger.getHandlerFunction() === 'processPendingMoves') {
-      ScriptApp.deleteTrigger(trigger);
+  try {
+    var triggers = ScriptApp.getProjectTriggers();
+    if (triggers) {
+      triggers.forEach(function(trigger) {
+        if (trigger && (trigger.getHandlerFunction() === 'processPDFsFromGmail' ||
+            trigger.getHandlerFunction() === 'scheduledBackup' ||
+            trigger.getHandlerFunction() === 'processPendingMoves')) {
+          ScriptApp.deleteTrigger(trigger);
+        }
+      });
     }
-  });
 
-  ScriptApp.newTrigger('processPDFsFromGmail')
-    .timeBased().everyMinutes(15).create();
+    ScriptApp.newTrigger('processPDFsFromGmail')
+      .timeBased().everyMinutes(15).create();
 
-  ScriptApp.newTrigger('scheduledBackup')
-    .timeBased().atHour(23).everyDays(1).create();
+    ScriptApp.newTrigger('scheduledBackup')
+      .timeBased().atHour(23).everyDays(1).create();
 
-  ScriptApp.newTrigger('processPendingMoves')
-    .timeBased().everyHours(1).create();
+    ScriptApp.newTrigger('processPendingMoves')
+      .timeBased().everyHours(1).create();
 
-  Logger.log('Time triggers created');
-  SpreadsheetApp.getUi().alert('Triggers Created!\n\n• Email processing: every 15 min\n• Backup: daily at 11 PM\n• Move shipped orders: hourly');
+    Logger.log('Time triggers created');
+    SpreadsheetApp.getUi().alert('Triggers Created!\n\n• Email processing: every 15 min\n• Backup: daily at 11 PM\n• Move shipped orders: hourly');
+  } catch (e) {
+    Logger.log('createTimeTriggers error: ' + e.message);
+    SpreadsheetApp.getUi().alert('Error creating triggers: ' + e.message);
+  }
 }
 
 function deleteAllTriggers() {
-  var triggers = ScriptApp.getProjectTriggers();
-  triggers.forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
-  Logger.log('All triggers deleted');
-  SpreadsheetApp.getUi().alert('All triggers deleted.');
+  try {
+    var triggers = ScriptApp.getProjectTriggers();
+    if (triggers) {
+      triggers.forEach(function(trigger) {
+        if (trigger) ScriptApp.deleteTrigger(trigger);
+      });
+    }
+    Logger.log('All triggers deleted');
+    SpreadsheetApp.getUi().alert('All triggers deleted.');
+  } catch (e) {
+    Logger.log('deleteAllTriggers error: ' + e.message);
+    SpreadsheetApp.getUi().alert('Error deleting triggers: ' + e.message);
+  }
 }
 
 function listTriggers() {
-  var triggers = ScriptApp.getProjectTriggers();
-  var info = 'Current Triggers:\n\n';
+  try {
+    var triggers = ScriptApp.getProjectTriggers();
+    var info = 'Current Triggers:\n\n';
 
-  if (triggers.length === 0) {
-    info += 'No triggers set up.';
-  } else {
-    triggers.forEach(function(trigger) {
-      info += '• ' + trigger.getHandlerFunction() + '\n';
-    });
+    if (!triggers || triggers.length === 0) {
+      info += 'No triggers set up.';
+    } else {
+      triggers.forEach(function(trigger) {
+        if (trigger) info += '• ' + trigger.getHandlerFunction() + '\n';
+      });
+    }
+
+    SpreadsheetApp.getUi().alert(info);
+  } catch (e) {
+    Logger.log('listTriggers error: ' + e.message);
+    SpreadsheetApp.getUi().alert('Error listing triggers: ' + e.message);
   }
-
-  SpreadsheetApp.getUi().alert(info);
 }
 
 
@@ -105,11 +126,19 @@ var USER_ROLES = {
 function _getUserRole() {
   try {
     var email = '';
-    try { email = Session.getActiveUser().getEmail().toLowerCase().trim(); } catch (e) {}
+    try {
+      email = Session.getActiveUser().getEmail().toLowerCase().trim();
+    } catch (e) {
+      Logger.log('getActiveUser failed: ' + e.message);
+    }
 
     // getActiveUser() returns empty in simple triggers — fall back to effective user
     if (!email) {
-      try { email = Session.getEffectiveUser().getEmail().toLowerCase().trim(); } catch (e) {}
+      try {
+        email = Session.getEffectiveUser().getEmail().toLowerCase().trim();
+      } catch (e) {
+        Logger.log('getEffectiveUser failed: ' + e.message);
+      }
     }
 
     // If still empty, we're likely the owner running a simple trigger — default to editor
@@ -120,9 +149,10 @@ function _getUserRole() {
 
     Logger.log('User detected: ' + email);
     var roles = _loadUserRoles();
+    if (!roles || typeof roles !== 'object') return 'none';
     return roles[email] || 'none';
   } catch (e) {
-    Logger.log('Could not get user email: ' + e);
+    Logger.log('Could not get user email: ' + e.message);
     return 'editor'; // safe default — owner is the only one who'd hit this
   }
 }
@@ -625,10 +655,14 @@ var USER_ROLES_KEY = 'USER_ROLES_CONFIG';
 
 function _loadAccessConfig() {
   try {
-    var raw = PropertiesService.getScriptProperties().getProperty(ACCESS_CONFIG_KEY);
-    return raw ? JSON.parse(raw) : {};
+    var props = PropertiesService.getScriptProperties();
+    if (!props) return {};
+    var raw = props.getProperty(ACCESS_CONFIG_KEY);
+    if (!raw) return {};
+    var config = JSON.parse(raw);
+    return (config && typeof config === 'object') ? config : {};
   } catch (e) {
-    Logger.log('Error loading access config: ' + e);
+    Logger.log('Error loading access config: ' + e.message);
     return {};
   }
 }
@@ -638,15 +672,33 @@ function _loadAccessConfig() {
  * Saves config and immediately applies visibility.
  */
 function saveAccessConfig(jsonStr) {
-  var role = _getUserRole();
-  if (role !== 'editor') throw new Error('Editor only');
+  try {
+    var role = _getUserRole();
+    if (role !== 'editor') throw new Error('Editor only');
 
-  PropertiesService.getScriptProperties().setProperty(ACCESS_CONFIG_KEY, jsonStr);
-  Logger.log('Access config saved');
+    if (!jsonStr || typeof jsonStr !== 'string') {
+      throw new Error('Invalid config JSON');
+    }
 
-  // Apply immediately for all roles (will take effect on their next onOpen)
-  // But also apply now for any non-editor currently viewing
-  // Nothing to do here — _applySheetVisibility runs on each user's onOpen
+    // Validate JSON before saving
+    var config = JSON.parse(jsonStr);
+    if (!config || typeof config !== 'object') {
+      throw new Error('Config must be an object');
+    }
+
+    var props = PropertiesService.getScriptProperties();
+    if (!props) throw new Error('Could not access script properties');
+
+    props.setProperty(ACCESS_CONFIG_KEY, jsonStr);
+    Logger.log('Access config saved');
+
+    // Apply immediately for all roles (will take effect on their next onOpen)
+    // But also apply now for any non-editor currently viewing
+    // Nothing to do here — _applySheetVisibility runs on each user's onOpen
+  } catch (e) {
+    Logger.log('saveAccessConfig error: ' + e.message);
+    throw e;
+  }
 }
 
 
@@ -660,13 +712,18 @@ function saveAccessConfig(jsonStr) {
  */
 function _loadUserRoles() {
   try {
-    var raw = PropertiesService.getScriptProperties().getProperty(USER_ROLES_KEY);
-    if (raw) return JSON.parse(raw);
+    var props = PropertiesService.getScriptProperties();
+    if (!props) return USER_ROLES;
+    var raw = props.getProperty(USER_ROLES_KEY);
+    if (raw) {
+      var config = JSON.parse(raw);
+      if (config && typeof config === 'object') return config;
+    }
   } catch (e) {
-    Logger.log('Error loading user roles config: ' + e);
+    Logger.log('Error loading user roles config: ' + e.message);
   }
   // Fall back to hardcoded
-  return USER_ROLES;
+  return USER_ROLES || {};
 }
 
 /**
@@ -674,10 +731,29 @@ function _loadUserRoles() {
  * @param {string} jsonStr — JSON string of { email: role, ... }
  */
 function saveUserRoles(jsonStr) {
-  var role = _getUserRole();
-  if (role !== 'editor') throw new Error('Editor only');
-  PropertiesService.getScriptProperties().setProperty(USER_ROLES_KEY, jsonStr);
-  Logger.log('User roles config saved: ' + jsonStr);
+  try {
+    var role = _getUserRole();
+    if (role !== 'editor') throw new Error('Editor only');
+
+    if (!jsonStr || typeof jsonStr !== 'string') {
+      throw new Error('Invalid roles JSON');
+    }
+
+    // Validate JSON before saving
+    var config = JSON.parse(jsonStr);
+    if (!config || typeof config !== 'object') {
+      throw new Error('Config must be an object');
+    }
+
+    var props = PropertiesService.getScriptProperties();
+    if (!props) throw new Error('Could not access script properties');
+
+    props.setProperty(USER_ROLES_KEY, jsonStr);
+    Logger.log('User roles config saved: ' + jsonStr);
+  } catch (e) {
+    Logger.log('saveUserRoles error: ' + e.message);
+    throw e;
+  }
 }
 
 
@@ -690,61 +766,80 @@ function saveUserRoles(jsonStr) {
  * Editor always sees everything. Unknown users see nothing.
  */
 function _applySheetVisibility(role) {
-  if (role === 'editor') return; // editor sees all, no changes
-
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheets = ss.getSheets();
-  var config = _loadAccessConfig();
-  var email = '';
-
-  // Get the email for this role
   try {
-    email = Session.getActiveUser().getEmail().toLowerCase().trim();
+    if (role === 'editor') return; // editor sees all, no changes
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) return;
+
+    var sheets = ss.getSheets();
+    if (!sheets || sheets.length === 0) return;
+
+    var config = _loadAccessConfig();
+    var email = '';
+
+    // Get the email for this role
+    try {
+      email = Session.getActiveUser().getEmail().toLowerCase().trim();
+    } catch (e) {
+      Logger.log('Cannot get email for visibility: ' + e.message);
+      return;
+    }
+
+    if (!email) return;
+
+    // If no config saved yet, do nothing (editor hasn't configured yet)
+    if (Object.keys(config).length === 0) return;
+
+    // We need at least one sheet visible at all times
+    var visibleCount = 0;
+    var sheetsToHide = [];
+    var sheetsToShow = [];
+
+    for (var i = 0; i < sheets.length; i++) {
+      if (!sheets[i]) continue;
+      var name = sheets[i].getName();
+      var key = email + '|' + name;
+      var hasView = config[key] && config[key].view;
+      var hasEdit = config[key] && config[key].edit;
+
+      if (role === 'none') {
+        // Unknown users — hide everything
+        sheetsToHide.push(sheets[i]);
+      } else if (hasView || hasEdit) {
+        sheetsToShow.push(sheets[i]);
+        visibleCount++;
+      } else {
+        sheetsToHide.push(sheets[i]);
+      }
+    }
+
+    // Safety: must keep at least 1 sheet visible
+    if (visibleCount === 0 && sheetsToShow.length === 0) {
+      // Show first sheet as fallback
+      if (sheets.length > 0 && sheets[0]) {
+        sheetsToShow.push(sheets[0]);
+        // Remove from hide list
+        sheetsToHide = sheetsToHide.filter(function(s) { return s && s.getName() !== sheets[0].getName(); });
+      }
+    }
+
+    // Show first, then hide (can't hide all sheets)
+    for (var s = 0; s < sheetsToShow.length; s++) {
+      try {
+        if (sheetsToShow[s]) sheetsToShow[s].showSheet();
+      } catch (e) {
+        Logger.log('Could not show sheet: ' + e.message);
+      }
+    }
+    for (var h = 0; h < sheetsToHide.length; h++) {
+      try {
+        if (sheetsToHide[h]) sheetsToHide[h].hideSheet();
+      } catch (e) {
+        Logger.log('Could not hide sheet: ' + e.message);
+      }
+    }
   } catch (e) {
-    Logger.log('Cannot get email for visibility: ' + e);
-    return;
-  }
-
-  // If no config saved yet, do nothing (editor hasn't configured yet)
-  if (Object.keys(config).length === 0) return;
-
-  // We need at least one sheet visible at all times
-  var visibleCount = 0;
-  var sheetsToHide = [];
-  var sheetsToShow = [];
-
-  for (var i = 0; i < sheets.length; i++) {
-    var name = sheets[i].getName();
-    var key = email + '|' + name;
-    var hasView = config[key] && config[key].view;
-    var hasEdit = config[key] && config[key].edit;
-
-    if (role === 'none') {
-      // Unknown users — hide everything
-      sheetsToHide.push(sheets[i]);
-    } else if (hasView || hasEdit) {
-      sheetsToShow.push(sheets[i]);
-      visibleCount++;
-    } else {
-      sheetsToHide.push(sheets[i]);
-    }
-  }
-
-  // Safety: must keep at least 1 sheet visible
-  if (visibleCount === 0 && sheetsToShow.length === 0) {
-    // Show first sheet as fallback
-    if (sheets.length > 0) {
-      sheetsToShow.push(sheets[0]);
-      // Remove from hide list
-      sheetsToHide = sheetsToHide.filter(function(s) { return s.getName() !== sheets[0].getName(); });
-    }
-  }
-
-  // Show first, then hide (can't hide all sheets)
-  for (var s = 0; s < sheetsToShow.length; s++) {
-    try { sheetsToShow[s].showSheet(); } catch (e) { /* skip */ }
-  }
-  for (var h = 0; h < sheetsToHide.length; h++) {
-    try { sheetsToHide[h].hideSheet(); } catch (e) { /* skip */ }
+    Logger.log('_applySheetVisibility error: ' + e.message);
   }
 }

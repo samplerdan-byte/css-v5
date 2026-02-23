@@ -133,18 +133,28 @@ function _easyPostFetch(endpoint, payload) {
     muteHttpExceptions: true
   };
 
-  var response = UrlFetchApp.fetch(url, options);
+  Logger.log('EasyPost POST ' + endpoint);
+  var response;
+  try {
+    response = UrlFetchApp.fetch(url, options);
+  } catch (fetchErr) {
+    Logger.log('EasyPost fetch error on POST ' + endpoint + ': ' + fetchErr.message);
+    throw new Error('EasyPost network error: ' + fetchErr.message);
+  }
+
   var code = response.getResponseCode();
   var body;
   try {
     body = JSON.parse(response.getContentText());
   } catch (parseErr) {
+    Logger.log('EasyPost parse error on POST ' + endpoint + ' (HTTP ' + code + ')');
     throw new Error('EasyPost API error (' + code + '): Invalid response body');
   }
 
   if (code >= 400) {
     var errMsg = 'EasyPost API error (' + code + ')';
     if (body.error && body.error.message) errMsg += ': ' + body.error.message;
+    Logger.log(errMsg + ' on POST ' + endpoint);
     throw new Error(errMsg);
   }
 
@@ -163,18 +173,28 @@ function _easyPostGet(endpoint) {
     muteHttpExceptions: true
   };
 
-  var response = UrlFetchApp.fetch(url, options);
+  Logger.log('EasyPost GET ' + endpoint);
+  var response;
+  try {
+    response = UrlFetchApp.fetch(url, options);
+  } catch (fetchErr) {
+    Logger.log('EasyPost fetch error on GET ' + endpoint + ': ' + fetchErr.message);
+    throw new Error('EasyPost network error: ' + fetchErr.message);
+  }
+
   var code = response.getResponseCode();
   var body;
   try {
     body = JSON.parse(response.getContentText());
   } catch (parseErr) {
+    Logger.log('EasyPost parse error on GET ' + endpoint + ' (HTTP ' + code + ')');
     throw new Error('EasyPost API error (' + code + '): Invalid response body');
   }
 
   if (code >= 400) {
     var errMsg = 'EasyPost API error (' + code + ')';
     if (body.error && body.error.message) errMsg += ': ' + body.error.message;
+    Logger.log(errMsg + ' on GET ' + endpoint);
     throw new Error(errMsg);
   }
 
@@ -235,8 +255,14 @@ function testEasyPostConnection() {
  * @returns {Object} { trackingNumber, labelUrl, carrier, service, rate, shipmentId }
  */
 function createShipmentAndBuyLabel(toAddress, parcel, opts) {
+  if (!toAddress || typeof toAddress !== 'object') throw new Error('toAddress is required');
+  if (!parcel || typeof parcel !== 'object') throw new Error('parcel is required');
+  if (!(toAddress.street1 || toAddress.address)) throw new Error('toAddress must include street1 or address');
+  if (!(toAddress.zip)) throw new Error('toAddress must include zip');
+
   opts = opts || {};
   var shipper = _getShipperAddress();
+  Logger.log('createShipmentAndBuyLabel: to=' + (toAddress.company || toAddress.name || 'unknown') + ', carrier=' + (opts.carrier || 'any'));
 
   // Build shipment payload
   var shipmentPayload = {
@@ -298,6 +324,8 @@ function createShipmentAndBuyLabel(toAddress, parcel, opts) {
     rate: { id: selectedRate.id }
   });
 
+  Logger.log('Label purchased: tracking=' + buyResult.tracking_code + ', carrier=' + selectedRate.carrier + ' ' + selectedRate.service + ', rate=$' + selectedRate.rate);
+
   return {
     trackingNumber: buyResult.tracking_code,
     labelUrl: buyResult.postage_label ? buyResult.postage_label.label_url : null,
@@ -345,8 +373,12 @@ function _selectBestRate(rates, preferredCarrier, preferredService) {
 // ============================================================
 
 function getShippingRates(toAddress, parcel, opts) {
+  if (!toAddress || typeof toAddress !== 'object') throw new Error('toAddress is required');
+  if (!parcel || typeof parcel !== 'object') throw new Error('parcel is required');
+
   opts = opts || {};
   var shipper = _getShipperAddress();
+  Logger.log('getShippingRates: to=' + (toAddress.company || toAddress.name || 'unknown'));
 
   var shipmentPayload = {
     shipment: {
@@ -417,10 +449,15 @@ function getShippingRates(toAddress, parcel, opts) {
 // ============================================================
 
 function buyLabelForShipment(shipmentId, rateId) {
+  if (!shipmentId) throw new Error('shipmentId is required');
+  if (!rateId) throw new Error('rateId is required');
+
+  Logger.log('buyLabelForShipment: shipment=' + shipmentId + ', rate=' + rateId);
   var result = _easyPostFetch('/shipments/' + shipmentId + '/buy', {
     rate: { id: rateId }
   });
 
+  Logger.log('Label bought: tracking=' + (result.tracking_code || 'none'));
   return {
     trackingNumber: result.tracking_code,
     labelUrl: result.postage_label ? result.postage_label.label_url : null,
@@ -437,7 +474,11 @@ function buyLabelForShipment(shipmentId, rateId) {
 // ============================================================
 
 function trackPackage(trackingNumber, carrier) {
+  if (!trackingNumber || !String(trackingNumber).trim()) return { error: 'Tracking number is required' };
+  trackingNumber = String(trackingNumber).trim();
+
   try {
+    Logger.log('trackPackage: ' + trackingNumber + (carrier ? ' (' + carrier + ')' : ''));
     var payload = { tracker: { tracking_code: trackingNumber } };
     if (carrier) payload.tracker.carrier = carrier;
 
@@ -478,7 +519,11 @@ function trackPackage(trackingNumber, carrier) {
  * @returns {Object} { success, trackingNumber, labelUrl, carrier, service, rate, error }
  */
 function generateLabelForSample(sampleId, parcelOverrides) {
+  if (!sampleId || !String(sampleId).trim()) return { success: false, error: 'Sample ID is required' };
+  sampleId = String(sampleId).trim();
+
   try {
+    Logger.log('generateLabelForSample: ' + sampleId);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(SHEET_NAMES.allOrders);
     if (!sheet) return { success: false, error: 'All Orders sheet not found' };
@@ -544,6 +589,7 @@ function generateLabelForSample(sampleId, parcelOverrides) {
       thirdPartyZip: contactInfo.zip
     });
 
+    Logger.log('generateLabelForSample success: ' + sampleId + ' → ' + result.trackingNumber);
     return {
       success: true,
       trackingNumber: result.trackingNumber,
@@ -556,6 +602,7 @@ function generateLabelForSample(sampleId, parcelOverrides) {
     };
 
   } catch (e) {
+    Logger.log('generateLabelForSample error: ' + sampleId + ' — ' + e.message);
     return { success: false, error: e.message };
   }
 }
@@ -631,6 +678,9 @@ function _getReceiverContact(receiverName) {
 // ============================================================
 
 function generateLabelsForBatch(sampleIds, parcelOverrides) {
+  if (!Array.isArray(sampleIds) || sampleIds.length === 0) return [];
+  Logger.log('generateLabelsForBatch: ' + sampleIds.length + ' sample(s)');
+
   var results = [];
   for (var i = 0; i < sampleIds.length; i++) {
     var result = generateLabelForSample(sampleIds[i], parcelOverrides);
@@ -657,10 +707,15 @@ function generateLabelsForBatch(sampleIds, parcelOverrides) {
 // ============================================================
 
 function voidShipment(shipmentId) {
+  if (!shipmentId) return { success: false, error: 'shipmentId is required' };
+
   try {
+    Logger.log('voidShipment: ' + shipmentId);
     var result = _easyPostFetch('/shipments/' + shipmentId + '/refund', {});
+    Logger.log('voidShipment success: ' + shipmentId + ' → ' + result.refund_status);
     return { success: true, status: result.refund_status };
   } catch (e) {
+    Logger.log('voidShipment error: ' + shipmentId + ' — ' + e.message);
     return { success: false, error: e.message };
   }
 }
