@@ -878,3 +878,4 @@ document.getElementById("queryBox").focus();
 </script>
 </body>
 </html>`;
+}
