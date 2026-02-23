@@ -193,15 +193,20 @@ function _gatherBriefingData() {
       
       if (reviewIdx !== undefined && row[reviewIdx]) b.needsReview++;
       
-      if (tsDate && tsDate >= yesterday && tsDate < today) {
+      // Normalize tsDate to start of day for accurate comparisons
+      var tsDateNorm = tsDate ? _startOfDay(tsDate) : null;
+      if (tsDateNorm && tsDateNorm >= yesterday && tsDateNorm < today) {
         b.receivedYesterday.push(o);
         var clientKey = sender || 'Unknown';
         b.byClient[clientKey] = (b.byClient[clientKey] || 0) + 1;
       }
-      
-      if ((!status || status === 'Received') && tsDate && tsDate < today) b.pendingUnscanned.push(o);
+
+      // Only count 'Received' status (or truly empty) as pending, not all non-scanned statuses
+      if ((status === '' || status === 'Received' || status === 'New') && tsDateNorm && tsDateNorm < today) b.pendingUnscanned.push(o);
       if (status === 'Scanned') b.scannedReady.push(o);
-      if ((status === 'Shipped' || status === 'Completed') && shipDate && shipDate >= yesterday && shipDate < today) b.shippedYesterday.push(o);
+      // Normalize shipDate to start of day for accurate comparisons
+      var shipDateNorm = shipDate ? _startOfDay(shipDate) : null;
+      if ((status === 'Shipped' || status === 'Completed') && shipDateNorm && shipDateNorm >= yesterday && shipDateNorm < today) b.shippedYesterday.push(o);
       
       if (containerETA) {
         try {
@@ -214,12 +219,12 @@ function _gatherBriefingData() {
         } catch(e) {}
       }
       
-      if (tsDate && tsDate >= weekAgo) b.statsWeek.received++;
-      if (tsDate && tsDate >= monthAgo) b.statsMonth.received++;
-      if (shipDate && shipDate >= weekAgo) b.statsWeek.shipped++;
-      if (shipDate && shipDate >= monthAgo) b.statsMonth.shipped++;
-      
-      if (!status || status === 'Received') b.statsTotal.received++;
+      if (tsDateNorm && tsDateNorm >= weekAgo) b.statsWeek.received++;
+      if (tsDateNorm && tsDateNorm >= monthAgo) b.statsMonth.received++;
+      if (shipDateNorm && shipDateNorm >= weekAgo) b.statsWeek.shipped++;
+      if (shipDateNorm && shipDateNorm >= monthAgo) b.statsMonth.shipped++;
+
+      if (status === '' || status === 'Received' || status === 'New') b.statsTotal.received++;
       else if (status === 'Scanned') b.statsTotal.scanned++;
       else if (status === 'Shipped' || status === 'Completed') b.statsTotal.shipped++;
     }
@@ -288,13 +293,15 @@ function _gatherBriefingData() {
 
           if (invStatus === 'Sent' && dueDate) {
             var dd = new Date(dueDate);
-            if (dd < today) {
+            var ddNorm = _startOfDay(dd);
+            if (ddNorm < today) {
+              var daysOverdue = Math.floor((today.getTime() - ddNorm.getTime()) / 86400000);
               b.overdueInvoices.push({
                 invoiceNum: invNumCol !== undefined ? String(inv[invNumCol] || '') : '',
                 customer: invCustCol !== undefined ? String(inv[invCustCol] || '') : '',
-                total: invTotalCol !== undefined ? (inv[invTotalCol] || 0) : 0,
+                total: invTotalCol !== undefined ? (parseFloat(inv[invTotalCol]) || 0) : 0,
                 dueDate: Utilities.formatDate(dd, BRIEFING_CONFIG.timezone, 'MM/dd'),
-                daysOverdue: Math.floor((today.getTime() - _startOfDay(dd).getTime()) / 86400000)
+                daysOverdue: Math.max(1, daysOverdue)
               });
             }
           }

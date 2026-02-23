@@ -151,31 +151,4 @@ function getOrCreateLabel(labelName) {
   }
 }
 
-/**
- * One-time utility: strips PDF_Processed label from threads after a given date
- * so they get reprocessed on the next trigger run.
- * Run manually from the script editor, then delete when done.
- */
-function reprocessEmailsFrom() {
-  try {
-    var label = GmailApp.getUserLabelByName('PDF_Processed');
-    if (!label) { Logger.log('No PDF_Processed label found'); return; }
-
-    var query = 'label:PDF_Processed after:2026/02/15';
-    var threads = GmailApp.search(query, 0, 100);
-    Logger.log('Found ' + threads.length + ' threads to reprocess');
-
-    for (var i = 0; i < threads.length; i++) {
-      if (threads[i]) {
-        threads[i].removeLabel(label);
-        Logger.log('Unlabeled: ' + threads[i].getFirstMessageSubject());
-      }
-    }
-
-    Logger.log('Done. ' + threads.length + ' threads will be reprocessed on next run.');
-  } catch (e) {
-    Logger.log('reprocessEmailsFrom error: ' + e.message);
-  }
-}
-
 // logError() and logWarning() — moved to Errorlog.js to avoid duplicates

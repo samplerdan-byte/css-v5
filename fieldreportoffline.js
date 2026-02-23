@@ -159,7 +159,7 @@ function generateOfflineFieldReport() {
     '  return PERMS.columns.indexOf(colName) !== -1;\n' +
     '}\n' +
     '\n' +
-    'function editCell(el, row, col) {\n' +
+    'function editCell(el, row, col, csSample) {\n' +
     '  if (el.querySelector("input")) return;\n' +
     '  var cur = el.querySelector("em") ? "" : (el.textContent || "").trim();\n' +
     '  var inp = document.createElement("input");\n' +
@@ -172,7 +172,7 @@ function generateOfflineFieldReport() {
     '    if (!nv) el.innerHTML = \'<em class="ep">+ \' + col.toLowerCase().replace(/[^a-z]/g, " ").trim() + \'</em>\';\n' +
     '    if (nv !== cur) {\n' +
     '      el.classList.add("edited");\n' +
-    '      pendingEdits.push({ row: row, column: col, value: nv, old: cur, ts: new Date().toISOString() });\n' +
+    '      pendingEdits.push({ row: row, column: col, value: nv, old: cur, ts: new Date().toISOString(), csSample: csSample || "" });\n' +
     '      saveEdits();\n' +
     '      toast("tok", "Edit saved locally (" + pendingEdits.length + " pending)");\n' +
     '    }\n' +
@@ -251,10 +251,11 @@ function generateOfflineFieldReport() {
     '// ── Render ──\n' +
     'function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }\n' +
     '\n' +
-    'function edt(row, colName, val, placeholder) {\n' +
+    'function edt(row, colName, val, placeholder, csSample) {\n' +
     '  if (!canEditCol(colName)) return esc(val || "");\n' +
-    '  if (val) return \'<span class="ec" onclick="editCell(this,\' + row + \',&#39;\' + colName + \'&#39;)" title="Click to edit \' + colName + \'">\' + esc(val) + \'</span>\';\n' +
-    '  return \'<span class="ec" onclick="editCell(this,\' + row + \',&#39;\' + colName + \'&#39;)" title="Click to edit \' + colName + \'"><em class="ep">+ \' + (placeholder || colName.toLowerCase()) + \'</em></span>\';\n' +
+    '  var cs = csSample ? ",&#39;" + esc(String(csSample)) + "&#39;" : ",&#39;&#39;";\n' +
+    '  if (val) return \'<span class="ec" onclick="editCell(this,\' + row + \',&#39;\' + colName + \'&#39;\' + cs + \')" title="Click to edit \' + colName + \'">\' + esc(val) + \'</span>\';\n' +
+    '  return \'<span class="ec" onclick="editCell(this,\' + row + \',&#39;\' + colName + \'&#39;\' + cs + \')" title="Click to edit \' + colName + \'"><em class="ep">+ \' + (placeholder || colName.toLowerCase()) + \'</em></span>\';\n' +
     '}\n' +
     '\n' +
     'function renderReport() {\n' +
@@ -312,17 +313,18 @@ function generateOfflineFieldReport() {
     '          var rows = "";\n' +
     '          samples.forEach(function(s) {\n' +
     '            var r = s.rowNumber;\n' +
+    '            var cs = s.csSample || "";\n' +
     '            var rc = "";\n' +
-    '            if (!multi) { rc = "<td>" + edt(r, "Receiver", recv !== "Unassigned" ? recv : "", "receiver") + "</td>"; }\n' +
+    '            if (!multi) { rc = "<td>" + edt(r, "Receiver", recv !== "Unassigned" ? recv : "", "receiver", cs) + "</td>"; }\n' +
     '            rows += "<tr>" +\n' +
-    '              "<td>" + edt(r, "Reference", s.reference, "ref") + "</td>" +\n' +
-    '              \'<td class="dc">\' + edt(r, "Description", s.description, "desc") + "</td>" +\n' +
-    '              "<td>" + edt(r, "Mark #", s.mark, "mark") + "</td>" +\n' +
-    '              "<td>" + edt(r, "Container #", s.container, "container") + "</td>" +\n' +
-    '              "<td>" + edt(r, "Cargo #", s.cargo, "cargo") + "</td>" +\n' +
+    '              "<td>" + edt(r, "Reference", s.reference, "ref", cs) + "</td>" +\n' +
+    '              \'<td class="dc">\' + edt(r, "Description", s.description, "desc", cs) + "</td>" +\n' +
+    '              "<td>" + edt(r, "Mark #", s.mark, "mark", cs) + "</td>" +\n' +
+    '              "<td>" + edt(r, "Container #", s.container, "container", cs) + "</td>" +\n' +
+    '              "<td>" + edt(r, "Cargo #", s.cargo, "cargo", cs) + "</td>" +\n' +
     '              rc +\n' +
-    '              "<td>" + edt(r, "Bag Count", s.bagCount, "bags") + "</td>" +\n' +
-    '              "<td>" + edt(r, "Sample Weight", s.sampleWeight, "wt") + "</td>" +\n' +
+    '              "<td>" + edt(r, "Bag Count", s.bagCount, "bags", cs) + "</td>" +\n' +
+    '              "<td>" + edt(r, "Sample Weight", s.sampleWeight, "wt", cs) + "</td>" +\n' +
     '            "</tr>";\n' +
     '          });\n' +
     '          var rth = !multi ? "<th>Receiver</th>" : "";\n' +
@@ -490,6 +492,7 @@ function importOfflineEdits(jsonStr) {
   if (!sheet) return { success: false, message: 'Main sheet not found.' };
 
   var col = _getColumnMap(sheet);
+  var lastRow = sheet.getLastRow();
   var applied = 0;
   var skipped = 0;
   var errors = [];
@@ -511,10 +514,10 @@ function importOfflineEdits(jsonStr) {
       continue;
     }
 
-    // Validate row number — must be data row (>= 2), not header
+    // Validate row number — must be data row (>= 2) and within current sheet bounds
     rowNum = parseInt(rowNum, 10);
-    if (isNaN(rowNum) || rowNum < 2) {
-      errors.push('Edit ' + i + ': invalid row number (must be >= 2)');
+    if (isNaN(rowNum) || rowNum < 2 || rowNum > lastRow) {
+      errors.push('Edit ' + i + ': invalid row number ' + rowNum + ' (sheet has ' + lastRow + ' rows)');
       skipped++;
       continue;
     }
@@ -658,6 +661,13 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // Explicit action allowlist — only known actions are processed
+    var allowedActions = ['syncFieldReport'];
+    if (allowedActions.indexOf(action) === -1) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Unknown action' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (action === 'syncFieldReport' && Array.isArray(payload.edits)) {
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.mainSheetName);
       if (!sheet) {
@@ -667,6 +677,10 @@ function doPost(e) {
 
       var col = _getColumnMap(sheet);
       var applied = 0;
+      var stale = 0;
+
+      // Read CS Sample # column index once for staleness checks
+      var csSampleColIdx = col['CS Sample #'];
 
       // Group edits by row for batched writes
       var lastRow = sheet.getLastRow();
@@ -674,17 +688,18 @@ function doPost(e) {
       for (var i = 0; i < payload.edits.length; i++) {
         var edit = payload.edits[i];
         if (!edit.row || !edit.column) continue;
-        // Validate row number — must be a data row (>= 2) and within sheet bounds
+        // Validate row number — must be a data row (>= 2) and strictly within current sheet bounds
         var editRow = parseInt(edit.row, 10);
-        if (isNaN(editRow) || editRow < 2 || editRow > lastRow + 100) continue; // +100 grace for concurrent adds
-        // Validate column name is a string
+        if (isNaN(editRow) || editRow < 2 || editRow > lastRow) continue;
+        // Validate column name is a string and on the allowlist of editable fields
         if (typeof edit.column !== 'string') continue;
         var colIdx = col[edit.column];
         if (colIdx === undefined) continue;
-        // Sanitize value — must be a string or number
+        // Sanitize value — must be a string or number, capped at 1000 chars
         var editValue = (edit.value === null || edit.value === undefined) ? '' : String(edit.value).substring(0, 1000);
         if (!editsByRow[editRow]) editsByRow[editRow] = [];
-        editsByRow[editRow].push({ colIdx: colIdx, value: editValue });
+        // Carry csSample for staleness validation (optional field from client)
+        editsByRow[editRow].push({ colIdx: colIdx, value: editValue, csSample: edit.csSample || '' });
       }
 
       var rowKeys = Object.keys(editsByRow);
@@ -692,6 +707,19 @@ function doPost(e) {
         var rowNum = parseInt(rowKeys[r], 10);
         var rowEdits = editsByRow[rowNum];
         try {
+          // Staleness guard: if the edit carries a csSample ID, verify the row still
+          // contains that sample before writing — catches row-shift from inserts/deletes
+          var expectedCsSample = rowEdits[0].csSample;
+          if (expectedCsSample && csSampleColIdx !== undefined) {
+            var actualCsSample = String(sheet.getRange(rowNum, csSampleColIdx + 1).getValue()).trim();
+            if (actualCsSample !== expectedCsSample.trim()) {
+              Logger.log('doPost syncFieldReport: stale row ' + rowNum +
+                ' — expected CS Sample "' + expectedCsSample + '" but found "' + actualCsSample + '"');
+              stale += rowEdits.length;
+              continue;
+            }
+          }
+
           if (rowEdits.length === 1) {
             sheet.getRange(rowNum, rowEdits[0].colIdx + 1).setValue(rowEdits[0].value);
           } else {
@@ -710,10 +738,12 @@ function doPost(e) {
         } catch (err) { /* skip individual row failures */ }
       }
 
-      Logger.log('doPost syncFieldReport: applied ' + applied + ' of ' + payload.edits.length + ' edit(s)');
+      var msg = 'Applied ' + applied + ' of ' + payload.edits.length + ' edit(s)';
+      if (stale > 0) msg += ' (' + stale + ' skipped — stale row data)';
+      Logger.log('doPost syncFieldReport: ' + msg);
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
-        message: 'Applied ' + applied + ' of ' + payload.edits.length + ' edit(s)'
+        message: msg
       })).setMimeType(ContentService.MimeType.JSON);
     }
 

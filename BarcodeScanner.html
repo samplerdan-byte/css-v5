@@ -148,14 +148,17 @@
 
     function setStatus(cls, msg) {
       var el = document.getElementById('status');
+      if (!el) return;
       el.className = cls;
       el.textContent = msg;
     }
 
     function addHistory(id, ok, msg) {
       var section = document.getElementById('historySection');
+      if (!section) return;
       section.style.display = 'block';
       var list = document.getElementById('historyList');
+      if (!list) return;
       var now = new Date();
       var time = now.getHours().toString().padStart(2,'0') + ':' +
                  now.getMinutes().toString().padStart(2,'0') + ':' +
@@ -172,16 +175,21 @@
 
     function clearHistory() {
       if (!confirm('Clear all scan history? This cannot be undone.')) return;
-      document.getElementById('historyList').textContent = '';
-      document.getElementById('historySection').style.display = 'none';
+      var histList = document.getElementById('historyList');
+      if (histList) histList.textContent = '';
+      var histSection = document.getElementById('historySection');
+      if (histSection) histSection.style.display = 'none';
       scanCount = 0;
-      document.getElementById('count').textContent = '0';
+      var countEl = document.getElementById('count');
+      if (countEl) countEl.textContent = '0';
       setStatus('ready', 'Ready — scan a barcode or type a sample number');
-      document.getElementById('barcodeInput').focus();
+      var input = document.getElementById('barcodeInput');
+      if (input) input.focus();
     }
 
     // Auto-focus on load
-    document.getElementById('barcodeInput').focus();
+    var initialInput = document.getElementById('barcodeInput');
+    if (initialInput) initialInput.focus();
   </script>
 </body>
 </html>

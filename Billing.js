@@ -254,12 +254,17 @@ function _autoBillSamples(movedRows, ss) {
     dueDate.setDate(dueDate.getDate() + 30);
     var totalBilled = 0;
 
+    // Track numbers allocated in this run to prevent duplicates within a
+    // single execution (sheet writes may not have flushed between iterations).
+    var reservedInvoiceNumbers = {};
+
     var customerNames = Object.keys(byCustomer).sort();
     for (var ci = 0; ci < customerNames.length; ci++) {
       var customerName = customerNames[ci];
       var samples = byCustomer[customerName];
 
-      var invoiceNum = _getNextInvoiceNumber();
+      var invoiceNum = _getNextInvoiceNumber(reservedInvoiceNumbers);
+      reservedInvoiceNumbers[invoiceNum] = true;
       var subtotal = 0;
       var lineNum = 0;
       var lineItemRows = [];
@@ -269,6 +274,18 @@ function _autoBillSamples(movedRows, ss) {
         lineNum++;
         var serviceCode = _detectServiceCode(sample, rates);
         var rateInfo = rates[serviceCode] || rates['REG'] || { description: 'Regular Sample', rate: 28.00, unit: 'per sample' };
+
+        // Guard: if the resolved rate is 0 (e.g. INT-50 "Call for quote"),
+        // fall back to REG so the line item isn't silently billed at $0.
+        // The service code is preserved in the Notes column for manual review.
+        var noteOverride = '';
+        if (rateInfo.rate === 0) {
+          Logger.log('Auto-bill: zero-rate service code ' + serviceCode + ' for sample ' + sample.csSample + ' — falling back to REG. Review manually.');
+          noteOverride = '[RATE REVIEW: auto-detected ' + serviceCode + ', billed as REG — verify rate]';
+          serviceCode = 'REG';
+          rateInfo = rates['REG'] || { description: 'Regular Sample', rate: 28.00, unit: 'per sample' };
+        }
+
         var qty = 1;
         var unitPrice = Math.round(rateInfo.rate * 100) / 100;  // cents-safe
         var lineTotal = Math.round(qty * unitPrice * 100) / 100; // cents-safe
@@ -279,7 +296,7 @@ function _autoBillSamples(movedRows, ss) {
           sample.csSample, sample.csOrder, sample.container,
           sample.reference || sample.sampleOrderNum,
           qty, rateInfo.unit, unitPrice, lineTotal,
-          customerName, sample.warehouse, sample.description
+          customerName, sample.warehouse, noteOverride || sample.description
         ]);
       }
 
@@ -398,18 +415,35 @@ function _detectServiceCode(sample, rates) {
 // GENERATE NEXT INVOICE NUMBER
 // ============================================================
 
-function _getNextInvoiceNumber() {
+// reservedNumbers — optional Set/object of already-allocated numbers in the
+// current run.  Callers that generate multiple invoices in one execution MUST
+// pass this object and record each number they claim, so that successive calls
+// within the same script execution can't return the same number (the sheet
+// write from the previous iteration may not have flushed yet when the next
+// read happens, which is the classic Apps Script race condition).
+function _getNextInvoiceNumber(reservedNumbers) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(BILLING_CONFIG.invoicesSheetName);
-  if (!sheet || sheet.getLastRow() < 2) return BILLING_CONFIG.invoicePrefix + '1001';
-  
-  var invNums = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
   var highest = 1000;
-  for (var i = 0; i < invNums.length; i++) {
-    var num = String(invNums[i][0]).replace(BILLING_CONFIG.invoicePrefix, '');
-    var parsed = parseInt(num);
-    if (!isNaN(parsed) && parsed > highest) highest = parsed;
+
+  if (sheet && sheet.getLastRow() >= 2) {
+    var invNums = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < invNums.length; i++) {
+      var num = String(invNums[i][0]).replace(BILLING_CONFIG.invoicePrefix, '');
+      var parsed = parseInt(num);
+      if (!isNaN(parsed) && parsed > highest) highest = parsed;
+    }
   }
+
+  // Also advance past any numbers allocated in the current run but not yet
+  // written to the sheet (prevents duplicates within a single execution).
+  if (reservedNumbers) {
+    for (var key in reservedNumbers) {
+      var rParsed = parseInt(String(key).replace(BILLING_CONFIG.invoicePrefix, ''));
+      if (!isNaN(rParsed) && rParsed > highest) highest = rParsed;
+    }
+  }
+
   return BILLING_CONFIG.invoicePrefix + (highest + 1);
 }
 
@@ -607,12 +641,17 @@ function generateInvoicesForCustomers(customerList) {
   var today = new Date();
   var dueDate = new Date(today);
   dueDate.setDate(dueDate.getDate() + 30);
-  
+
+  // Track invoice numbers allocated in this run so _getNextInvoiceNumber
+  // doesn't re-read stale sheet data and issue duplicates.
+  var reservedInvoiceNumbers = {};
+
   customerList.forEach(function(customerName) {
     var samples = byCustomer[customerName];
     if (!samples || samples.length === 0) return;
-    
-    var invoiceNum = _getNextInvoiceNumber();
+
+    var invoiceNum = _getNextInvoiceNumber(reservedInvoiceNumbers);
+    reservedInvoiceNumbers[invoiceNum] = true;
     var subtotal = 0;
     var lineNum = 0;
     var hasShipping = false;
@@ -622,6 +661,18 @@ function generateInvoicesForCustomers(customerList) {
       lineNum++;
       var serviceCode = _detectServiceCode(sample, rates);
       var rateInfo = rates[serviceCode] || rates['REG'] || { description: 'Regular Sample', rate: 28.00, unit: 'per sample' };
+
+      // Guard: if the resolved rate is 0 (e.g. INT-50 "Call for quote"),
+      // fall back to REG so the line item isn't silently billed at $0.
+      // The original service code is flagged in the Notes column for manual review.
+      var noteOverride = '';
+      if (rateInfo.rate === 0) {
+        Logger.log('generateInvoicesForCustomers: zero-rate service code ' + serviceCode + ' for sample ' + sample.csSample + ' — falling back to REG. Review manually.');
+        noteOverride = '[RATE REVIEW: auto-detected ' + serviceCode + ', billed as REG — verify rate]';
+        serviceCode = 'REG';
+        rateInfo = rates['REG'] || { description: 'Regular Sample', rate: 28.00, unit: 'per sample' };
+      }
+
       var qty = 1;
       var unitPrice = Math.round(rateInfo.rate * 100) / 100;  // cents-safe
       var lineTotal = Math.round(qty * unitPrice * 100) / 100; // cents-safe
@@ -634,7 +685,7 @@ function generateInvoicesForCustomers(customerList) {
         sample.csSample, sample.csOrder, sample.container,
         sample.reference || sample.sampleOrderNum,
         qty, rateInfo.unit, unitPrice, lineTotal,
-        customerName, sample.warehouse, sample.description
+        customerName, sample.warehouse, noteOverride || sample.description
       ]);
     });
 
@@ -974,10 +1025,17 @@ function exportInvoicesQBO() {
   ].map(escapeCSVField).join(','));
   
   unexported.forEach(function(inv) {
+    // Validate required QBO fields — skip invoices with missing number or customer
+    // so a single bad row doesn't corrupt the whole import.
+    if (!inv.number || !inv.customer) {
+      Logger.log('exportInvoicesQBO: skipping invoice with missing number or customer: ' + JSON.stringify({number: inv.number, customer: inv.customer}));
+      return;
+    }
+
     var lines = linesByInvoice[inv.number] || [];
     var dateStr = _fmtDateCSV(inv.date);
     var dueStr = _fmtDateCSV(inv.dueDate);
-    
+
     if (lines.length === 0) {
       csvLines.push([
         inv.number, inv.customer, dateStr, dueStr, BILLING_CONFIG.defaultTerms,
@@ -1092,22 +1150,34 @@ function exportInvoicesIIF() {
   iif += '!TRNS\tTRNSTYPE\tDATE\tACCNT\tNAME\tCLASS\tAMOUNT\tDOCNUM\tMEMO\tTERMS\tDUEDATE\n';
   iif += '!SPL\tTRNSTYPE\tDATE\tACCNT\tNAME\tCLASS\tAMOUNT\tDOCNUM\tMEMO\tQNTY\tPRICE\n';
   iif += '!ENDTRNS\n';
-  
+
   unexported.forEach(function(inv) {
     var lines = linesByInvoice[inv.number] || [];
+
+    // Validate required fields — skip invoices with missing invoice number or customer
+    // to prevent a corrupt IIF that QuickBooks will silently mis-import.
+    if (!inv.number || !inv.customer) {
+      Logger.log('exportInvoicesIIF: skipping invoice with missing number or customer: ' + JSON.stringify({number: inv.number, customer: inv.customer}));
+      return;
+    }
+
     var dateStr = _fmtDateIIF(inv.date);
     var dueStr = _fmtDateIIF(inv.dueDate);
-    
-    iif += 'TRNS\tINVOICE\t' + dateStr + '\tAccounts Receivable\t' + inv.customer + '\t\t' +
-      inv.total.toFixed(2) + '\t' + inv.number + '\t\t' + BILLING_CONFIG.defaultTerms + '\t' + dueStr + '\n';
-    
+
+    // IIF is tab-delimited — tabs and newlines in field values corrupt the format.
+    var safeCustomer = _escapeIIF(inv.customer);
+    var safeNumber = _escapeIIF(inv.number);
+
+    iif += 'TRNS\tINVOICE\t' + dateStr + '\tAccounts Receivable\t' + safeCustomer + '\t\t' +
+      inv.total.toFixed(2) + '\t' + safeNumber + '\t\t' + BILLING_CONFIG.defaultTerms + '\t' + dueStr + '\n';
+
     lines.forEach(function(li) {
       var desc = li.description;
       if (li.csSample) desc += ' [' + li.csSample + ']';
-      iif += 'SPL\tINVOICE\t' + dateStr + '\t' + BILLING_CONFIG.qboIncomeAccount + '\t' + inv.customer +
-        '\t\t-' + li.lineTotal.toFixed(2) + '\t' + inv.number + '\t' + desc + '\t' + li.qty + '\t' + li.unitPrice.toFixed(2) + '\n';
+      iif += 'SPL\tINVOICE\t' + dateStr + '\t' + BILLING_CONFIG.qboIncomeAccount + '\t' + safeCustomer +
+        '\t\t-' + li.lineTotal.toFixed(2) + '\t' + safeNumber + '\t' + _escapeIIF(desc) + '\t' + li.qty + '\t' + li.unitPrice.toFixed(2) + '\n';
     });
-    
+
     iif += 'ENDTRNS\n';
   });
   
@@ -1585,8 +1655,10 @@ function editLineItemService() {
   var rate = rates[newCode];
   var qty = parseFloat(sheet.getRange(row, 9).getValue()) || 1;
   
+  var newUnitPrice = Math.round(rate.rate * 100) / 100;                // cents-safe
+  var newLineTotal = Math.round(qty * newUnitPrice * 100) / 100;       // cents-safe
   sheet.getRange(row, 3, 1, 2).setValues([[newCode, rate.description]]);
-  sheet.getRange(row, 10, 1, 3).setValues([[rate.unit, rate.rate, qty * rate.rate]]);
+  sheet.getRange(row, 10, 1, 3).setValues([[rate.unit, newUnitPrice, newLineTotal]]);
   
   var invNum = String(sheet.getRange(row, 1).getValue()).trim();
   _recalcInvoiceTotal(invNum);
@@ -1610,32 +1682,34 @@ function _recalcInvoiceTotal(invoiceNum) {
   var liData = liSheet.getRange(2, 1, liSheet.getLastRow() - 1, 12).getValues();
   var subtotal = 0;
   var shippingFee = 0;
-  
+
   for (var i = 0; i < liData.length; i++) {
     if (String(liData[i][0]).trim().toUpperCase() === invoiceNum) {
       var code = String(liData[i][2]).trim();
       var lineTotal = parseFloat(liData[i][11]) || 0;
       if (code === 'SHIP-FEE') {
-        shippingFee = lineTotal;
+        shippingFee = Math.round((shippingFee + lineTotal) * 100) / 100; // cents-safe
       } else {
-        subtotal += lineTotal;
+        subtotal = Math.round((subtotal + lineTotal) * 100) / 100; // cents-safe
       }
     }
   }
-  
+
   var rates = _loadRates();
   if (rates['SHIP-FEE'] && shippingFee > 0) {
-    shippingFee = subtotal * (rates['SHIP-FEE'].rate / 100);
+    // Recalculate the SHIP-FEE line item amount as a percentage of subtotal.
+    // Column 11 = Unit Price (the percentage rate, e.g. 20), column 12 = Line Total (dollar amount).
+    shippingFee = Math.round(subtotal * (rates['SHIP-FEE'].rate / 100) * 100) / 100; // cents-safe
     for (var i = 0; i < liData.length; i++) {
       if (String(liData[i][0]).trim().toUpperCase() === invoiceNum && String(liData[i][2]).trim() === 'SHIP-FEE') {
-        liSheet.getRange(i + 2, 11, 1, 2).setValues([[shippingFee, shippingFee]]);
+        liSheet.getRange(i + 2, 11, 1, 2).setValues([[rates['SHIP-FEE'].rate, shippingFee]]);
         break;
       }
     }
   }
-  
-  var total = subtotal + shippingFee;
-  
+
+  var total = Math.round((subtotal + shippingFee) * 100) / 100; // cents-safe
+
   var invData = invSheet.getRange(2, 1, invSheet.getLastRow() - 1, invSheet.getLastColumn()).getValues();
   var invCol = _getColumnMap(invSheet);
   for (var i = 0; i < invData.length; i++) {
@@ -1664,4 +1738,11 @@ function _fmtDateCSV(d) {
 
 function _fmtDateIIF(d) {
   return _fmtDateCSV(d);
+}
+
+// IIF files are tab-delimited.  A tab or newline inside any field value will
+// corrupt the record boundary.  Strip them rather than escaping — QuickBooks
+// Desktop has no quoting mechanism in IIF format.
+function _escapeIIF(val) {
+  return String(val || '').replace(/[\t\r\n]/g, ' ').trim();
 }

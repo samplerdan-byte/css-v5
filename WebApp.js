@@ -55,28 +55,58 @@ function doGet(e) {
 
   // Client Status Portal — token-based access
   if (page === 'portal') {
-    return HtmlService.createTemplateFromFile('ClientPortal')
-      .evaluate()
-      .setTitle('CSS — Order Status Portal')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    try {
+      return HtmlService.createTemplateFromFile('ClientPortal')
+        .evaluate()
+        .setTitle('CSS — Order Status Portal')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+        .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    } catch (templateErr) {
+      Logger.log('doGet: ClientPortal template missing or failed to load');
+      return HtmlService.createHtmlOutput(
+        '<html><body style="font-family:Arial;padding:40px;text-align:center;">' +
+        '<h2 style="color:#c0392b;">Portal Unavailable</h2>' +
+        '<p>The portal is temporarily unavailable. Please try again later.</p>' +
+        '</body></html>'
+      ).setTitle('CSS — Portal Unavailable');
+    }
   }
-  
+
   // Legacy scanner URL
   if (page === 'scanner') {
+    try {
+      return HtmlService.createTemplateFromFile('WebAppScanner')
+        .evaluate()
+        .setTitle('CSS Scanner')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+        .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    } catch (templateErr) {
+      Logger.log('doGet: WebAppScanner template missing or failed to load');
+      return HtmlService.createHtmlOutput(
+        '<html><body style="font-family:Arial;padding:40px;text-align:center;">' +
+        '<h2 style="color:#c0392b;">Scanner Unavailable</h2>' +
+        '<p>The scanner is temporarily unavailable. Please try again later.</p>' +
+        '</body></html>'
+      ).setTitle('CSS — Scanner Unavailable');
+    }
+  }
+
+  // Default: full web app
+  try {
     return HtmlService.createTemplateFromFile('WebAppScanner')
       .evaluate()
-      .setTitle('CSS Scanner')
+      .setTitle('CSS V5 — Commodity Sampler Services')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  } catch (templateErr) {
+    Logger.log('doGet: WebAppScanner (default) template missing or failed to load');
+    return HtmlService.createHtmlOutput(
+      '<html><body style="font-family:Arial;padding:40px;text-align:center;">' +
+      '<h2 style="color:#2E5339;">CSS — Commodity Sampler Services</h2>' +
+      '<p>The application is temporarily unavailable. Please try again later.</p>' +
+      '</body></html>'
+    ).setTitle('CSS — Commodity Sampler Services');
   }
-  
-  // Default: full web app
-  return HtmlService.createTemplateFromFile('WebAppScanner')
-    .evaluate()
-    .setTitle('CSS V5 — Commodity Sampler Services')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 // ============================================================
 // SERVER-SIDE: Process scanned QR data (order entry / lookup)
@@ -258,7 +288,8 @@ function scanSampleBarcode(barcode) {
     
     return { success: false, message: '❌ ' + searchId + ' not found in system' };
   } catch (e) {
-    return { success: false, message: '❌ Error: ' + e.message };
+    Logger.log('scanSampleBarcode error: ' + String(e).substring(0, 500).replace(/[\r\n]/g, ' '));
+    return { success: false, message: '❌ Error processing barcode. Please try again.' };
   }
 }
 
@@ -311,14 +342,25 @@ function webAppSubmitOrder(orderData) {
 
 function webAppProcessPDF(base64Data, fileName) {
   try {
-    // Sanitize filename for logging — strip newlines, limit length
-    var safeFileName = String(fileName || 'unknown').substring(0, 100).replace(/[\r\n]/g, ' ');
+    // Sanitize filename — strip path separators, control characters, limit length
+    // Use the sanitized version everywhere (blob, Drive title, logging)
+    var safeFileName = String(fileName || 'upload.pdf')
+      .replace(/[\r\n\t]/g, '')          // no line breaks
+      .replace(/[\/\\<>:"|?*]/g, '_')    // no path/shell special chars
+      .replace(/\.\./g, '_')             // no directory traversal
+      .substring(0, 100)                 // length cap
+      .trim() || 'upload.pdf';
     Logger.log('WebApp PDF drop: ' + safeFileName + ' (' + (base64Data ? base64Data.length : 0) + ' chars)');
-    
+
+    // Basic size guard — Apps Script base64: ~4MB PDF ≈ ~5.5M chars
+    if (!base64Data || typeof base64Data !== 'string' || base64Data.length > 8000000) {
+      return { success: false, message: '⚠️ PDF too large or invalid. Try a smaller file.' };
+    }
+
     // Decode base64 to blob
     var decoded = Utilities.base64Decode(base64Data);
-    var blob = Utilities.newBlob(decoded, 'application/pdf', fileName);
-    
+    var blob = Utilities.newBlob(decoded, 'application/pdf', safeFileName);
+
     // Extract text from PDF
     // Google Apps Script can create a temp file and use OCR via Drive
     var tempFile = DriveApp.createFile(blob);
@@ -328,7 +370,7 @@ function webAppProcessPDF(base64Data, fileName) {
     // Convert PDF to Google Doc for text extraction
     try {
       docFile = Drive.Files.copy(
-        { title: 'CSS_Temp_Extract_' + fileName, mimeType: MimeType.GOOGLE_DOCS },
+        { title: 'CSS_Temp_Extract_' + safeFileName, mimeType: MimeType.GOOGLE_DOCS },
         tempFile.getId(),
         { ocr: true, ocrLanguage: 'en' }
       );
@@ -346,14 +388,14 @@ function webAppProcessPDF(base64Data, fileName) {
     }
     
     // Parse the extracted text using existing format detection
-    var parsed = _parseExtractedPDFText(text, fileName);
-    
+    var parsed = _parseExtractedPDFText(text, safeFileName);
+
     return {
       success: true,
       type: 'pdf_parsed',
       extracted: parsed,
       rawText: text.substring(0, 2000), // First 2000 chars for review
-      message: '✅ Extracted ' + parsed.length + ' sample(s) from ' + fileName
+      message: '✅ Extracted ' + parsed.length + ' sample(s) from ' + safeFileName
     };
     
   } catch (e) {
@@ -470,6 +512,7 @@ function webAppShipSample(sampleId, trackingNumber) {
     }
     return { success: false, message: '❌ Failed to update shipping status' };
   } catch (e) {
-    return { success: false, message: '❌ Error: ' + e.message };
+    Logger.log('webAppShipSample error: ' + String(e).substring(0, 500).replace(/[\r\n]/g, ' '));
+    return { success: false, message: '❌ Error processing ship request. Please try again.' };
   }
 }

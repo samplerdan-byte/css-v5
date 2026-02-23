@@ -531,10 +531,17 @@
 
     // ── Tab Switching ──
     function switchTab(tab) {
-      document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
-      document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
-      document.getElementById('tab-' + tab).classList.add('active');
-      document.getElementById('tabBtn' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+      if (!tab) return;
+      document.querySelectorAll('.tab-panel').forEach(function(p) {
+        if (p) p.classList.remove('active');
+      });
+      document.querySelectorAll('.tab-btn').forEach(function(b) {
+        if (b) b.classList.remove('active');
+      });
+      var tabPanel = document.getElementById('tab-' + tab);
+      if (tabPanel) tabPanel.classList.add('active');
+      var tabBtn = document.getElementById('tabBtn' + tab.charAt(0).toUpperCase() + tab.slice(1));
+      if (tabBtn) tabBtn.classList.add('active');
 
       if (tab !== 'scan' && isScanning) stopScanner();
       if (tab !== 'photos' && isPhotoScanning) stopPhotoScanner();
@@ -579,30 +586,37 @@
     function startScanner() {
       if (isScanning) return;
 
-      // FIX: Pass formatsToSupport in the constructor, NOT in start() config
-      html5QrCode = new Html5Qrcode("qr-reader", {
-        formatsToSupport: BARCODE_FORMATS,
-        verbose: false
-      });
+      try {
+        // FIX: Pass formatsToSupport in the constructor, NOT in start() config
+        html5QrCode = new Html5Qrcode("qr-reader", {
+          formatsToSupport: BARCODE_FORMATS,
+          verbose: false
+        });
 
-      var scanConfig = {
-        fps: 10,
-        qrbox: { width: 250, height: 150 },
-        aspectRatio: 1.333
-      };
+        var scanConfig = {
+          fps: 10,
+          qrbox: { width: 250, height: 150 },
+          aspectRatio: 1.333
+        };
 
-      html5QrCode.start(
-        { facingMode: "environment" },
-        scanConfig,
-        onScanSuccess,
-        function() { /* ignore scan failures */ }
-      ).then(function() {
-        isScanning = true;
-        setStatusBar('scanStatus', 'ready', '📷 Camera active — point at barcode');
-      }).catch(function(err) {
-        console.log('Camera error:', err);
+        html5QrCode.start(
+          { facingMode: "environment" },
+          scanConfig,
+          onScanSuccess,
+          function() { /* ignore scan failures */ }
+        ).then(function() {
+          isScanning = true;
+          setStatusBar('scanStatus', 'ready', '📷 Camera active — point at barcode');
+        }).catch(function(err) {
+          console.log('Camera error:', err);
+          isScanning = false;
+          setStatusBar('scanStatus', 'error', '📷 Camera not available — use manual entry');
+        });
+      } catch(e) {
+        console.log('Scanner init error:', e);
+        isScanning = false;
         setStatusBar('scanStatus', 'error', '📷 Camera not available — use manual entry');
-      });
+      }
     }
 
     function stopScanner() {
@@ -629,13 +643,17 @@
     function doManualScan() {
       var input = document.getElementById('manualScanInput');
       var btn = document.getElementById('manualScanBtn');
+      if (!input || !btn) return;
       var val = input.value.trim();
       if (!val) return;
       btn.disabled = true;
       processScanResult(val);
       input.value = '';
       // Re-enable after a short delay so it can't be double-fired
-      setTimeout(function() { btn.disabled = false; input.focus(); }, 1500);
+      setTimeout(function() {
+        if (btn) btn.disabled = false;
+        if (input) input.focus();
+      }, 1500);
     }
 
     function processScanResult(code) {
@@ -711,8 +729,10 @@
 
     // ── Scan History ──
     function addScanHistory(id, ok, msg) {
-      document.getElementById('scanHistoryCard').style.display = 'block';
+      var historyCard = document.getElementById('scanHistoryCard');
+      if (historyCard) historyCard.style.display = 'block';
       var list = document.getElementById('scanHistory');
+      if (!list) return;
       var time = new Date().toLocaleTimeString();
       var div = document.createElement('div');
       div.className = 'hist-item ' + (ok ? 'ok' : 'fail');
@@ -729,15 +749,19 @@
 
     function clearScanHistory() {
       scanCount = 0;
-      document.getElementById('scanCount').textContent = '0';
-      document.getElementById('scanHistory').textContent = '';
-      document.getElementById('scanHistoryCard').style.display = 'none';
+      var scanCountEl = document.getElementById('scanCount');
+      if (scanCountEl) scanCountEl.textContent = '0';
+      var scanHistory = document.getElementById('scanHistory');
+      if (scanHistory) scanHistory.textContent = '';
+      var historyCard = document.getElementById('scanHistoryCard');
+      if (historyCard) historyCard.style.display = 'none';
       setStatusBar('scanStatus', 'ready', '📷 Ready to scan');
     }
 
     // ── Lookup Result Display ──
     function showLookupResult(data) {
       var container = document.getElementById('lookupResult');
+      if (!container || !data) return;
       container.textContent = '';
 
       var card = document.createElement('div');
@@ -780,10 +804,12 @@
     function showParsedQR(data) { showLookupResult(data); }
 
     function doLookup() {
-      var val = document.getElementById('lookupInput').value.trim();
-      if (!val) return;
+      var input = document.getElementById('lookupInput');
       var btn = document.getElementById('lookupBtn');
       var resultEl = document.getElementById('lookupResult');
+      if (!input || !btn || !resultEl) return;
+      var val = input.value.trim();
+      if (!val) return;
       btn.disabled = true;
       btn.textContent = '...';
       resultEl.textContent = '';
@@ -793,25 +819,37 @@
       resultEl.appendChild(searchingDiv);
       google.script.run
         .withSuccessHandler(function(r) {
-          btn.disabled = false;
-          btn.textContent = 'Search';
+          if (btn) { btn.disabled = false; btn.textContent = 'Search'; }
+          if (!r) {
+            if (resultEl) {
+              resultEl.textContent = '';
+              var errDiv = document.createElement('div');
+              errDiv.className = 'status-bar error';
+              errDiv.textContent = 'No response from server';
+              resultEl.appendChild(errDiv);
+            }
+            return;
+          }
           if (r.success && r.data) showLookupResult(r.data);
           else {
-            resultEl.textContent = '';
-            var errDiv = document.createElement('div');
-            errDiv.className = 'status-bar error';
-            errDiv.textContent = r.message || 'Not found';
-            resultEl.appendChild(errDiv);
+            if (resultEl) {
+              resultEl.textContent = '';
+              var errDiv = document.createElement('div');
+              errDiv.className = 'status-bar error';
+              errDiv.textContent = r.message || 'Not found';
+              resultEl.appendChild(errDiv);
+            }
           }
         })
         .withFailureHandler(function(e) {
-          btn.disabled = false;
-          btn.textContent = 'Search';
-          resultEl.textContent = '';
-          var errDiv = document.createElement('div');
-          errDiv.className = 'status-bar error';
-          errDiv.textContent = '❌ Lookup failed — check your connection and try again';
-          resultEl.appendChild(errDiv);
+          if (btn) { btn.disabled = false; btn.textContent = 'Search'; }
+          if (resultEl) {
+            resultEl.textContent = '';
+            var errDiv = document.createElement('div');
+            errDiv.className = 'status-bar error';
+            errDiv.textContent = '❌ Lookup failed — check your connection and try again';
+            resultEl.appendChild(errDiv);
+          }
         })
         .webAppProcessQR(val);
     }
@@ -860,7 +898,9 @@
     }
 
     function loadSampleForPhoto() {
-      var sampleId = document.getElementById('photoSampleInput').value.trim();
+      var photoSampleInput = document.getElementById('photoSampleInput');
+      if (!photoSampleInput) return;
+      var sampleId = photoSampleInput.value.trim();
       if (!sampleId) return;
       var goBtn = document.getElementById('photoGoBtn');
 
@@ -872,7 +912,7 @@
           if (ci !== -1) parts[p.substring(0, ci).trim()] = p.substring(ci + 1).trim();
         });
         sampleId = parts['CS_SAMPLE'] || sampleId;
-        document.getElementById('photoSampleInput').value = sampleId;
+        photoSampleInput.value = sampleId;
       }
 
       if (goBtn) goBtn.disabled = true;
@@ -966,6 +1006,7 @@
     }
 
     function handlePhotoCapture(event) {
+      if (!event || !event.target) return;
       var files = event.target.files;
       if (!files || files.length === 0) return;
 
@@ -973,26 +1014,37 @@
         (function(file) {
           var reader = new FileReader();
           reader.onload = function(e) {
-            pendingPhotos.push({
-              dataUrl: e.target.result,
-              base64: e.target.result.split(',')[1],
-              fileName: file.name || ('photo_' + Date.now() + '.jpg'),
-              mimeType: file.type || 'image/jpeg'
-            });
-            renderPendingPhotos();
+            try {
+              var base64 = e.target.result.split(',')[1];
+              if (!base64) return; // Skip invalid data
+              pendingPhotos.push({
+                dataUrl: e.target.result,
+                base64: base64,
+                fileName: file.name || ('photo_' + Date.now() + '.jpg'),
+                mimeType: file.type || 'image/jpeg'
+              });
+              renderPendingPhotos();
+            } catch(err) {
+              console.warn('Photo parse error:', err);
+            }
+          };
+          reader.onerror = function() {
+            console.warn('FileReader error for', file.name);
           };
           reader.readAsDataURL(file);
         })(files[i]);
       }
 
       // Reset input so same file can be selected again
-      event.target.value = '';
+      if (event.target) event.target.value = '';
     }
 
     function renderPendingPhotos() {
       var grid = document.getElementById('pendingPhotos');
+      if (!grid) return;
       grid.textContent = '';
       pendingPhotos.forEach(function(p, idx) {
+        if (!p) return;
         var thumbDiv = document.createElement('div');
         thumbDiv.className = 'photo-thumb';
         thumbDiv.id = 'pending-' + idx;
@@ -1003,7 +1055,10 @@
         btn.className = 'remove-btn';
         btn.textContent = '\u2715';
         btn.setAttribute('data-idx', idx);
-        btn.addEventListener('click', function() { removePendingPhoto(parseInt(this.getAttribute('data-idx'), 10)); });
+        btn.addEventListener('click', function() {
+          var dataIdx = parseInt(this.getAttribute('data-idx'), 10);
+          if (!isNaN(dataIdx)) removePendingPhoto(dataIdx);
+        });
         thumbDiv.appendChild(btn);
         if (p.uploading) {
           var overlay = document.createElement('div');
@@ -1013,8 +1068,10 @@
         }
         grid.appendChild(thumbDiv);
       });
-      document.getElementById('pendingCount').textContent = pendingPhotos.length;
-      document.getElementById('pendingPhotosCard').style.display = pendingPhotos.length > 0 ? 'block' : 'none';
+      var pendingCount = document.getElementById('pendingCount');
+      if (pendingCount) pendingCount.textContent = pendingPhotos.length;
+      var pendingPhotosCard = document.getElementById('pendingPhotosCard');
+      if (pendingPhotosCard) pendingPhotosCard.style.display = pendingPhotos.length > 0 ? 'block' : 'none';
     }
 
     function removePendingPhoto(idx) {
@@ -1099,29 +1156,48 @@
     }
 
     function processFile(file) {
+      if (!file) return;
       if (!file.name.toLowerCase().endsWith('.pdf')) {
-        setStatusBar('dropStatus', 'error', '⚠️ Only PDF files are supported'); return;
+        setStatusBar('dropStatus', 'error', '⚠️ Only PDF files are supported');
+        return;
       }
       if (file.size > 10 * 1024 * 1024) {
-        setStatusBar('dropStatus', 'error', '⚠️ File too large (max 10MB)'); return;
+        setStatusBar('dropStatus', 'error', '⚠️ File too large (max 10MB)');
+        return;
       }
       setStatusBar('dropStatus', 'working', '⏳ Processing ' + file.name + '...');
       var reader = new FileReader();
       reader.onload = function(e) {
-        var base64 = e.target.result.split(',')[1];
-        google.script.run
-          .withSuccessHandler(function(r) {
-            if (r.success && r.type === 'pdf_parsed') {
-              setStatusBar('dropStatus', 'success', r.message);
-              showExtractedData(r.extracted, r.rawText);
-            } else {
-              setStatusBar('dropStatus', 'error', r.message || 'Could not parse PDF');
-            }
-          })
-          .withFailureHandler(function(err) {
-            setStatusBar('dropStatus', 'error', '❌ PDF processing failed — check your connection and try again');
-          })
-          .webAppProcessPDF(base64, file.name);
+        try {
+          var base64 = e.target.result.split(',')[1];
+          if (!base64) {
+            setStatusBar('dropStatus', 'error', '❌ Could not read file');
+            return;
+          }
+          google.script.run
+            .withSuccessHandler(function(r) {
+              if (!r) {
+                setStatusBar('dropStatus', 'error', '❌ No response from server');
+                return;
+              }
+              if (r.success && r.type === 'pdf_parsed') {
+                setStatusBar('dropStatus', 'success', r.message);
+                showExtractedData(r.extracted, r.rawText);
+              } else {
+                setStatusBar('dropStatus', 'error', r.message || 'Could not parse PDF');
+              }
+            })
+            .withFailureHandler(function(err) {
+              setStatusBar('dropStatus', 'error', '❌ PDF processing failed — check your connection and try again');
+            })
+            .webAppProcessPDF(base64, file.name);
+        } catch(err) {
+          console.warn('File processing error:', err);
+          setStatusBar('dropStatus', 'error', '❌ Error processing file');
+        }
+      };
+      reader.onerror = function() {
+        setStatusBar('dropStatus', 'error', '❌ Could not read file');
       };
       reader.readAsDataURL(file);
     }
@@ -1194,17 +1270,27 @@
       var dropBtn = formEl ? formEl.querySelector('.btn-primary') : null;
       if (dropBtn) { dropBtn.disabled = true; dropBtn.textContent = '⏳ Submitting...'; }
       setStatusBar('dropStatus', 'working', '⏳ Submitting...');
+      var dropSender = document.getElementById('dropSender');
+      var dropWarehouse = document.getElementById('dropWarehouse');
+      var dropOrderNum = document.getElementById('dropOrderNum');
+      var dropContainer = document.getElementById('dropContainer');
+      var dropCargo = document.getElementById('dropCargo');
+      var dropMark = document.getElementById('dropMark');
+      var dropDesc = document.getElementById('dropDesc');
+      var dropBags = document.getElementById('dropBags');
+      var dropWeight = document.getElementById('dropWeight');
+      var dropRef = document.getElementById('dropRef');
       var orderData = {
-        sender: document.getElementById('dropSender').value.trim(),
-        warehouse: document.getElementById('dropWarehouse').value.trim(),
-        sampleOrderNum: document.getElementById('dropOrderNum').value.trim(),
-        container: document.getElementById('dropContainer').value.trim().toUpperCase(),
-        cargo: document.getElementById('dropCargo').value.trim(),
-        mark: document.getElementById('dropMark').value.trim(),
-        description: document.getElementById('dropDesc').value.trim(),
-        bagCount: document.getElementById('dropBags').value.trim(),
-        sampleWeight: document.getElementById('dropWeight').value.trim(),
-        reference: document.getElementById('dropRef').value.trim(),
+        sender: (dropSender && dropSender.value) ? dropSender.value.trim() : '',
+        warehouse: (dropWarehouse && dropWarehouse.value) ? dropWarehouse.value.trim() : '',
+        sampleOrderNum: (dropOrderNum && dropOrderNum.value) ? dropOrderNum.value.trim() : '',
+        container: (dropContainer && dropContainer.value) ? dropContainer.value.trim().toUpperCase() : '',
+        cargo: (dropCargo && dropCargo.value) ? dropCargo.value.trim() : '',
+        mark: (dropMark && dropMark.value) ? dropMark.value.trim() : '',
+        description: (dropDesc && dropDesc.value) ? dropDesc.value.trim() : '',
+        bagCount: (dropBags && dropBags.value) ? dropBags.value.trim() : '',
+        sampleWeight: (dropWeight && dropWeight.value) ? dropWeight.value.trim() : '',
+        reference: (dropRef && dropRef.value) ? dropRef.value.trim() : '',
         comments: 'Entered via Web App (PDF drop)'
       };
       google.script.run
@@ -1233,24 +1319,39 @@
       var entryBtn = document.getElementById('entrySubmitBtn');
       if (entryBtn) { entryBtn.disabled = true; entryBtn.textContent = '⏳ Submitting...'; }
       setStatusBar('entryStatus', 'working', '⏳ Submitting...');
-      var senderVal = document.getElementById('entrySender').value;
+      var entrySender = document.getElementById('entrySender');
+      var entryReceiver = document.getElementById('entryReceiver');
+      var entryWarehouse = document.getElementById('entryWarehouse');
+      var senderVal = entrySender ? entrySender.value : '';
       if (senderVal === '_other_') senderVal = prompt('Enter sender/client name:') || '';
-      var receiverVal = document.getElementById('entryReceiver').value;
+      var receiverVal = entryReceiver ? entryReceiver.value : '';
       if (receiverVal === '_other_') receiverVal = prompt('Enter receiver name:') || '';
-      var warehouseVal = document.getElementById('entryWarehouse').value;
+      var warehouseVal = entryWarehouse ? entryWarehouse.value : '';
       if (warehouseVal === '_other_') warehouseVal = prompt('Enter warehouse name:') || '';
 
+      var entryOrderNum = document.getElementById('entryOrderNum');
+      var entryContainer = document.getElementById('entryContainer');
+      var entryCargo = document.getElementById('entryCargo');
+      var entryMark = document.getElementById('entryMark');
+      var entryReference = document.getElementById('entryReference');
+      var entryDescription = document.getElementById('entryDescription');
+      var entryBags = document.getElementById('entryBags');
+      var entryWeight = document.getElementById('entryWeight');
+      var entryComments = document.getElementById('entryComments');
+
       var orderData = {
-        sender: senderVal, receiver: receiverVal, warehouse: warehouseVal,
-        sampleOrderNum: document.getElementById('entryOrderNum').value.trim(),
-        container: document.getElementById('entryContainer').value.trim().toUpperCase(),
-        cargo: document.getElementById('entryCargo').value.trim(),
-        mark: document.getElementById('entryMark').value.trim(),
-        reference: document.getElementById('entryReference').value.trim(),
-        description: document.getElementById('entryDescription').value.trim(),
-        bagCount: document.getElementById('entryBags').value.trim(),
-        sampleWeight: document.getElementById('entryWeight').value.trim(),
-        comments: document.getElementById('entryComments').value.trim() || 'Entered via Web App'
+        sender: senderVal,
+        receiver: receiverVal,
+        warehouse: warehouseVal,
+        sampleOrderNum: (entryOrderNum && entryOrderNum.value) ? entryOrderNum.value.trim() : '',
+        container: (entryContainer && entryContainer.value) ? entryContainer.value.trim().toUpperCase() : '',
+        cargo: (entryCargo && entryCargo.value) ? entryCargo.value.trim() : '',
+        mark: (entryMark && entryMark.value) ? entryMark.value.trim() : '',
+        reference: (entryReference && entryReference.value) ? entryReference.value.trim() : '',
+        description: (entryDescription && entryDescription.value) ? entryDescription.value.trim() : '',
+        bagCount: (entryBags && entryBags.value) ? entryBags.value.trim() : '',
+        sampleWeight: (entryWeight && entryWeight.value) ? entryWeight.value.trim() : '',
+        comments: (entryComments && entryComments.value) ? entryComments.value.trim() : 'Entered via Web App'
       };
 
       if (!orderData.sender && !orderData.sampleOrderNum && !orderData.container) {
@@ -1274,17 +1375,22 @@
     function clearEntryForm() {
       ['entryOrderNum','entryContainer','entryCargo','entryMark','entryReference',
        'entryDescription','entryBags','entryWeight','entryComments'].forEach(function(id) {
-        document.getElementById(id).value = '';
+        var el = document.getElementById(id);
+        if (el) el.value = '';
       });
-      document.getElementById('entrySender').selectedIndex = 0;
-      document.getElementById('entryReceiver').selectedIndex = 0;
-      document.getElementById('entryWarehouse').selectedIndex = 0;
+      var entrySender = document.getElementById('entrySender');
+      if (entrySender) entrySender.selectedIndex = 0;
+      var entryReceiver = document.getElementById('entryReceiver');
+      if (entryReceiver) entryReceiver.selectedIndex = 0;
+      var entryWarehouse = document.getElementById('entryWarehouse');
+      if (entryWarehouse) entryWarehouse.selectedIndex = 0;
       setStatusBar('entryStatus', 'ready', '✍️ Form cleared');
     }
 
     // ── Utility ──
     function setStatusBar(elId, cls, msg) {
       var el = document.getElementById(elId);
+      if (!el) return;
       el.className = 'status-bar ' + cls;
       el.textContent = msg;
     }
@@ -1293,43 +1399,70 @@
     function loadFormData() {
       google.script.run
         .withSuccessHandler(function(data) {
-          var senderEl = document.getElementById('entrySender');
-          if (data.shippers && data.shippers.length > 0) {
-            data.shippers.forEach(function(s) {
-              var opt = document.createElement('option');
-              opt.value = s.company; opt.textContent = s.company;
-              senderEl.appendChild(opt);
-            });
-          } else if (data.customers) {
-            data.customers.forEach(function(c) {
-              if (c.key === 'other') return;
-              var opt = document.createElement('option');
-              opt.value = c.name; opt.textContent = c.name;
-              senderEl.appendChild(opt);
-            });
+          if (!data) {
+            setStatusBar('entryStatus', 'error', '⚠️ Could not load form data');
+            return;
           }
-          senderEl.appendChild(Object.assign(document.createElement('option'), {value:'_other_',textContent:'— Other —'}));
+          var senderEl = document.getElementById('entrySender');
+          if (senderEl) {
+            if (data.shippers && Array.isArray(data.shippers) && data.shippers.length > 0) {
+              data.shippers.forEach(function(s) {
+                if (s && s.company) {
+                  var opt = document.createElement('option');
+                  opt.value = s.company;
+                  opt.textContent = s.company;
+                  senderEl.appendChild(opt);
+                }
+              });
+            } else if (data.customers && Array.isArray(data.customers)) {
+              data.customers.forEach(function(c) {
+                if (!c || c.key === 'other') return;
+                var opt = document.createElement('option');
+                opt.value = c.name;
+                opt.textContent = c.name;
+                senderEl.appendChild(opt);
+              });
+            }
+            var otherOpt = document.createElement('option');
+            otherOpt.value = '_other_';
+            otherOpt.textContent = '— Other —';
+            senderEl.appendChild(otherOpt);
+          }
 
           var recvEl = document.getElementById('entryReceiver');
-          if (data.receivers && data.receivers.length > 0) {
-            data.receivers.forEach(function(r) {
-              var opt = document.createElement('option');
-              opt.value = r.company; opt.textContent = r.company;
-              recvEl.appendChild(opt);
-            });
+          if (recvEl) {
+            if (data.receivers && Array.isArray(data.receivers) && data.receivers.length > 0) {
+              data.receivers.forEach(function(r) {
+                if (r && r.company) {
+                  var opt = document.createElement('option');
+                  opt.value = r.company;
+                  opt.textContent = r.company;
+                  recvEl.appendChild(opt);
+                }
+              });
+            }
+            var recvOtherOpt = document.createElement('option');
+            recvOtherOpt.value = '_other_';
+            recvOtherOpt.textContent = '— Other —';
+            recvEl.appendChild(recvOtherOpt);
           }
-          recvEl.appendChild(Object.assign(document.createElement('option'), {value:'_other_',textContent:'— Other —'}));
 
           var whEl = document.getElementById('entryWarehouse');
-          if (data.warehouses) {
-            data.warehouses.forEach(function(w) {
-              if (w.key === 'other') return;
-              var opt = document.createElement('option');
-              opt.value = w.name; opt.textContent = w.name;
-              whEl.appendChild(opt);
-            });
+          if (whEl) {
+            if (data.warehouses && Array.isArray(data.warehouses)) {
+              data.warehouses.forEach(function(w) {
+                if (!w || w.key === 'other') return;
+                var opt = document.createElement('option');
+                opt.value = w.name;
+                opt.textContent = w.name;
+                whEl.appendChild(opt);
+              });
+            }
+            var whOtherOpt = document.createElement('option');
+            whOtherOpt.value = '_other_';
+            whOtherOpt.textContent = '— Other —';
+            whEl.appendChild(whOtherOpt);
           }
-          whEl.appendChild(Object.assign(document.createElement('option'), {value:'_other_',textContent:'— Other —'}));
         })
         .withFailureHandler(function(e) {
           setStatusBar('entryStatus', 'error', '⚠️ Could not load form data — tap to retry or type sender/receiver manually');
@@ -1339,10 +1472,16 @@
     }
 
     // ── Startup ──
-    window.onload = function() {
+    window.addEventListener('load', function() {
       loadFormData();
       setTimeout(startScanner, 500);
-    };
+    });
+
+    // Cleanup on unload — stop scanners to release camera
+    window.addEventListener('beforeunload', function() {
+      if (isScanning) stopScanner();
+      if (isPhotoScanning) stopPhotoScanner();
+    });
   </script>
 </body>
 </html>

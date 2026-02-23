@@ -398,7 +398,8 @@ function processPDFsFromGmail() {
   Logger.log('Sheet found: ' + (sheet ? 'YES' : 'NO'));
 
   if (!sheet) {
-    SpreadsheetApp.getUi().alert('Please run setupSheet() first!');
+    Logger.log('ERROR: Sheet "' + CONFIG.mainSheetName + '" not found. Run setupSheet() first.');
+    try { SpreadsheetApp.getUi().alert('Please run setupSheet() first!'); } catch (ignore) {}
     return;
   }
 
@@ -428,7 +429,19 @@ function processPDFsFromGmail() {
   var attachTime = 0;
   var parserMetrics = {}; // Track success/failure per client
 
+  var timeoutReached = false;
+
   threads.forEach(function(thread, threadIndex) {
+    // Guard: stop processing if approaching the 6-minute GAS execution limit
+    var elapsedMs = Date.now() - t0.getTime();
+    if (elapsedMs > 300000) { // 5 minutes — leave 1 min buffer
+      if (!timeoutReached) {
+        Logger.log('TIMEOUT GUARD: Elapsed ' + (elapsedMs / 1000).toFixed(1) + 's — stopping to avoid 6-min GAS limit. Processed ' + processedCount + ' records from ' + threadIndex + '/' + threads.length + ' threads.');
+        timeoutReached = true;
+      }
+      return; // skip remaining threads
+    }
+
     var tThread = new Date();
     Logger.log('=== Processing thread ' + (threadIndex + 1) + '/' + threads.length + ' ===');
     try {
@@ -658,7 +671,16 @@ function processPDFsFromGmail() {
     Logger.log(pm + ': ' + m.attempts + ' emails, ' + rate + '% success, ' + m.orders + ' orders');
   }
 
-  SpreadsheetApp.getUi().alert('Processed ' + processedCount + ' records from ' + threads.length + ' emails in ' + elapsed + 's');
+  if (timeoutReached) {
+    Logger.log('NOTE: Processing was stopped early due to approaching the 6-minute execution limit. Unprocessed threads will be picked up on the next run.');
+  }
+
+  try {
+    SpreadsheetApp.getUi().alert('Processed ' + processedCount + ' records from ' + threads.length + ' emails in ' + elapsed + 's' + (timeoutReached ? ' (stopped early — timeout approaching)' : ''));
+  } catch (uiErr) {
+    // No UI context (running from trigger) — just log
+    Logger.log('Processed ' + processedCount + ' records from ' + threads.length + ' emails in ' + elapsed + 's');
+  }
 }
 
 
@@ -694,12 +716,15 @@ function extractOrderFromEmail(emailBody, pdfText, senderEmail, subject) {
   }
 
   if (result.client) {
-    result.orders = extractByClientType(result.client, cleanedEmailBody, cleanedPdfText, subject);
+    result.orders = extractByClientType(result.client, cleanedEmailBody, cleanedPdfText, subject) || [];
   } else {
-    result.orders = extractGeneric(cleanedEmailBody, cleanedPdfText, subject);
+    result.orders = extractGeneric(cleanedEmailBody, cleanedPdfText, subject) || [];
   }
 
   // Post-process: normalize + validate extracted data
+  // Filter out any null/undefined entries from parser results
+  result.orders = result.orders.filter(function(item) { return item != null; });
+
   for (var i = 0; i < result.orders.length; i++) {
     var o = result.orders[i];
 
@@ -797,6 +822,7 @@ function preprocessTableText(text) {
 }
 
 function checkForSamplingInstructions(text) {
+  if (!text) return false;
   text = text.toLowerCase();
   for (var i = 0; i < SAMPLING_INDICATORS.length; i++) {
     var pattern = new RegExp(SAMPLING_INDICATORS[i], 'i');
@@ -811,6 +837,7 @@ function checkForSamplingInstructions(text) {
 // ============================================================================
 
 function identifyClient(senderEmail, allText) {
+  if (!KNOWN_CLIENTS || typeof KNOWN_CLIENTS !== 'object') return null;
   senderEmail = (senderEmail || '').toLowerCase();
   allText = (allText || '').toLowerCase();
 
@@ -910,13 +937,16 @@ function extractByClientType(client, emailBody, pdfText, subject) {
       try {
         return parserFn(emailBody, pdfText, subject);
       } catch (e) {
-        logError('extractByClientType', 'Parser crashed for ' + client.name + ': ' + e.message, {
-          client: client.name,
-          subject: subject,
-          stack: e.stack,
-          emailLength: (emailBody || '').length,
-          pdfLength: (pdfText || '').length
-        });
+        if (typeof logError === 'function') {
+          logError('extractByClientType', 'Parser crashed for ' + client.name + ': ' + e.message, {
+            client: client.name,
+            subject: subject,
+            stack: e.stack,
+            emailLength: (emailBody || '').length,
+            pdfLength: (pdfText || '').length
+          });
+        }
+        Logger.log('Parser crashed for ' + client.name + ': ' + e.message);
         return []; // Fail gracefully — don't kill the batch
       }
     }
@@ -1111,6 +1141,7 @@ function extractGeneric(emailBody, pdfText, subject) {
 // ============================================================================
 
 function extractContainers(text) {
+  if (!text) return [];
   var containers = [];
   var patterns = [
     /\b([A-Z]{4}\d{7})\b/g,
@@ -1134,6 +1165,7 @@ function extractContainers(text) {
 }
 
 function extractMarks(text) {
+  if (!text) return [];
   var marks = [];
   var match;
 
@@ -1180,6 +1212,7 @@ function isLikelyPhone(str) {
 }
 
 function extractCargos(text) {
+  if (!text) return [];
   var cargos = [];
   var patterns = [
     /\bC(\d{5,7})\b/gi,
@@ -1216,6 +1249,7 @@ function extractCargos(text) {
 }
 
 function extractReferences(text, client) {
+  if (!text) return [];
   var refs = [];
   var patterns = [
     /\bS\d{5,12}\b/g,
@@ -1249,6 +1283,7 @@ function extractReferences(text, client) {
 }
 
 function detectWarehouse(text) {
+  if (!text) return null;
   text = text.toLowerCase();
   // Continental — try specific address first, then general
   if (text.indexOf('300 middlesex') >= 0 || text.indexOf('mac lane') >= 0 || text.indexOf('keasby') >= 0) return 'CONTINENTAL_300';
@@ -1271,6 +1306,7 @@ function detectWarehouse(text) {
 
 function extractSampleSize(text, defaultSize) {
   defaultSize = defaultSize || '2 lb';
+  if (!text) return { size: defaultSize, flag: null };
   var unusualWeights = [];
 
   var explicitPatterns = [
@@ -1340,6 +1376,7 @@ function extractSampleSize(text, defaultSize) {
 }
 
 function extractConditionNotes(text) {
+  if (!text) return '';
   var notes = [];
   var cleanText = text.replace(/>\s*>/g, ' ').replace(/\n>\s*/g, '\n').replace(/\s+/g, ' ');
 
@@ -1463,6 +1500,7 @@ function extractShipping(allText, emailBody) {
 }
 
 function extractFedExAccount(text) {
+  if (!text) return null;
   var patterns = [
     /(?:fedex|account)[:\s#]*(\d{4}[-]?\d{4}[-]?\d{1,4})/gi,
     /account\s*[-:#]?\s*(\d{9,12})/gi,
@@ -1476,6 +1514,7 @@ function extractFedExAccount(text) {
 }
 
 function extractBagCounts(text) {
+  if (!text) return [];
   var bags = [];
   var patterns = [
     { regex: /(\d+)\s*SSACK/gi, suffix: 'ss' },
@@ -1500,6 +1539,7 @@ function extractBagCounts(text) {
 }
 
 function extractDescription(text, origin) {
+  if (!text) return origin || '';
   var description = origin || '';
   var gradePatterns = [
     /Quality[:\s]*([A-Za-z\s]+(?:GREEN COFFEE|ARABICA|ROBUSTA)[A-Za-z\s]*)/gi,

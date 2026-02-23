@@ -8,6 +8,20 @@
 
 
 // ============================================================
+// HTML ESCAPE HELPER (Labels.gs)
+// Prevents field data with <, >, &, " from breaking label HTML.
+// ============================================================
+
+function _he(val) {
+  if (val == null) return '';
+  return String(val)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ============================================================
 // BARCODE HELPER (unique to Labels.gs)
 // ============================================================
 
@@ -43,8 +57,14 @@ function generateLabelsWithSizeNoCheckbox(size) {
 }
 
 function _getSamplesFromCache(removeAfter) {
-  var cache = CacheService.getUserCache();
-  var cached = cache.get('samplesToPrint');
+  var cache, cached;
+  try {
+    cache = CacheService.getUserCache();
+    cached = cache.get('samplesToPrint');
+  } catch (e) {
+    Logger.log('_getSamplesFromCache: CacheService unavailable — ' + e.message);
+    return null;
+  }
   if (!cached) return null;
 
   var cacheEntry;
@@ -52,18 +72,25 @@ function _getSamplesFromCache(removeAfter) {
     cacheEntry = JSON.parse(cached);
   } catch (e) {
     // Corrupted cache — remove it and treat as expired
-    cache.remove('samplesToPrint');
+    try { cache.remove('samplesToPrint'); } catch(ignore) {}
     return null;
   }
 
   // Check timestamp (expire after 10 minutes = 600000 ms)
   if (cacheEntry.timestamp && (Date.now() - cacheEntry.timestamp) > 600000) {
-    cache.remove('samplesToPrint');
+    try { cache.remove('samplesToPrint'); } catch(ignore) {}
     return null;
   }
 
   var samples = cacheEntry.samples;
-  if (removeAfter) cache.remove('samplesToPrint');
+  if (!Array.isArray(samples) || samples.length === 0) {
+    try { cache.remove('samplesToPrint'); } catch(ignore) {}
+    return null;
+  }
+
+  if (removeAfter) {
+    try { cache.remove('samplesToPrint'); } catch(ignore) {}
+  }
   return samples;
 }
 
@@ -160,34 +187,34 @@ function _build4x6(samples, hasCheckbox) {
         <div class="address-row">
           <div class="address-box ship-from">
             <div class="address-label">📤 SHIP FROM</div>
-            <div class="address-value">${s.sender || 'N/A'}</div>
+            <div class="address-value">${_he(s.sender) || 'N/A'}</div>
           </div>
           <div class="address-box ship-to">
             <div class="address-label">📦 SHIP TO</div>
-            <div class="address-value">${s.receiver || 'N/A'}</div>
+            <div class="address-value">${_he(s.receiver) || 'N/A'}</div>
           </div>
         </div>
         <div class="warehouse-box">
           <div class="warehouse-label">🏭 WAREHOUSE</div>
-          <div class="warehouse-value">${s.warehouse || 'N/A'}</div>
+          <div class="warehouse-value">${_he(s.warehouse) || 'N/A'}</div>
         </div>
-        <div class="shipping-method">🚚 ${s.shippingProcess || 'Standard Shipping'}</div>
+        <div class="shipping-method">🚚 ${_he(s.shippingProcess) || 'Standard Shipping'}</div>
         <div class="field-grid">
-          <div class="field"><span class="field-label">Container:</span> ${s.container || '-'}</div>
-          <div class="field"><span class="field-label">Mark:</span> ${s.mark || '-'}</div>
-          <div class="field"><span class="field-label">Cargo:</span> ${s.cargo || '-'}</div>
-          <div class="field"><span class="field-label">Reference:</span> ${s.reference || '-'}</div>
-          <div class="field"><span class="field-label">Description:</span> ${s.description || '-'}</div>
-          <div class="field"><span class="field-label">Bags:</span> ${s.bagCount || '-'}</div>
-          <div class="field"><span class="field-label">Sample Wt:</span> ${s.sampleWeight || '-'}</div>
-          <div class="field"><span class="field-label">Order:</span> ${s.sampleOrderNum || '-'}</div>
+          <div class="field"><span class="field-label">Container:</span> ${_he(s.container) || '-'}</div>
+          <div class="field"><span class="field-label">Mark:</span> ${_he(s.mark) || '-'}</div>
+          <div class="field"><span class="field-label">Cargo:</span> ${_he(s.cargo) || '-'}</div>
+          <div class="field"><span class="field-label">Reference:</span> ${_he(s.reference) || '-'}</div>
+          <div class="field"><span class="field-label">Description:</span> ${_he(s.description) || '-'}</div>
+          <div class="field"><span class="field-label">Bags:</span> ${_he(s.bagCount) || '-'}</div>
+          <div class="field"><span class="field-label">Sample Wt:</span> ${_he(s.sampleWeight) || '-'}</div>
+          <div class="field"><span class="field-label">Order:</span> ${_he(s.sampleOrderNum) || '-'}</div>
         </div>
       </div>
       <div class="codes-row">
         <img src="${qrUrl}" class="qr-code" alt="QR">
         <div class="barcode-container">
           <img src="${barcodeUrl}" class="barcode" alt="Barcode">
-          <div class="barcode-text">${s.csSample}</div>
+          <div class="barcode-text">${_he(s.csSample)}</div>
         </div>
       </div>
     </div>
@@ -273,30 +300,30 @@ function _build4x4(samples, hasCheckbox) {
         <div class="address-row">
           <div class="address-box ship-from">
             <div class="address-label">📤 FROM</div>
-            <div class="address-value">${s.sender || 'N/A'}</div>
+            <div class="address-value">${_he(s.sender) || 'N/A'}</div>
           </div>
           <div class="address-box ship-to">
             <div class="address-label">📦 TO</div>
-            <div class="address-value">${s.receiver || 'N/A'}</div>
+            <div class="address-value">${_he(s.receiver) || 'N/A'}</div>
           </div>
         </div>
         <div class="warehouse-box">
           <div class="warehouse-label">🏭 WAREHOUSE</div>
-          <div class="warehouse-value">${s.warehouse || 'N/A'}</div>
+          <div class="warehouse-value">${_he(s.warehouse) || 'N/A'}</div>
         </div>
-        <div class="shipping-method">🚚 ${s.shippingProcess || 'Standard'}</div>
+        <div class="shipping-method">🚚 ${_he(s.shippingProcess) || 'Standard'}</div>
         <div class="field-grid">
-          <div class="field"><span class="field-label">Container:</span> ${s.container || '-'}</div>
-          <div class="field"><span class="field-label">Mark:</span> ${s.mark || '-'}</div>
-          <div class="field"><span class="field-label">Cargo:</span> ${s.cargo || '-'}</div>
-          <div class="field"><span class="field-label">Bags:</span> ${s.bagCount || '-'}</div>
+          <div class="field"><span class="field-label">Container:</span> ${_he(s.container) || '-'}</div>
+          <div class="field"><span class="field-label">Mark:</span> ${_he(s.mark) || '-'}</div>
+          <div class="field"><span class="field-label">Cargo:</span> ${_he(s.cargo) || '-'}</div>
+          <div class="field"><span class="field-label">Bags:</span> ${_he(s.bagCount) || '-'}</div>
         </div>
       </div>
       <div class="codes-row">
         <img src="${qrUrl}" class="qr-code" alt="QR">
         <div class="barcode-container">
           <img src="${barcodeUrl}" class="barcode" alt="Barcode">
-          <div class="barcode-text">${s.csSample}</div>
+          <div class="barcode-text">${_he(s.csSample)}</div>
         </div>
       </div>
     </div>
@@ -360,13 +387,13 @@ function _build3x2(samples, hasCheckbox) {
 
   samples.forEach(function(s) {
     var barcodeUrl = getBarcodeUrl(s.csSample);
-    var containerShort = (s.container || '-').substring(0, 18);
-    var markShort = (s.mark || '-').substring(0, 18);
-    var cargoShort = (s.cargo || '-').substring(0, 18);
-    var senderShort = (s.sender || '-').substring(0, 18);
-    var receiverShort = (s.receiver || '-').substring(0, 18);
-    var warehouseShort = (s.warehouse || '-').substring(0, 20);
-    
+    var containerShort = _he((s.container || '-').substring(0, 18));
+    var markShort = _he((s.mark || '-').substring(0, 18));
+    var cargoShort = _he((s.cargo || '-').substring(0, 18));
+    var senderShort = _he((s.sender || '-').substring(0, 18));
+    var receiverShort = _he((s.receiver || '-').substring(0, 18));
+    var warehouseShort = _he((s.warehouse || '-').substring(0, 20));
+
     html += `
     <div class="label">
       <div class="header">
@@ -388,11 +415,11 @@ function _build3x2(samples, hasCheckbox) {
         <div class="info-item"><span class="info-label">C:</span> ${containerShort}</div>
         <div class="info-item"><span class="info-label">M:</span> ${markShort}</div>
         <div class="info-item"><span class="info-label">Cargo:</span> ${cargoShort}</div>
-        <div class="info-item"><span class="info-label">Bags:</span> ${s.bagCount || '-'}</div>
+        <div class="info-item"><span class="info-label">Bags:</span> ${_he(s.bagCount) || '-'}</div>
       </div>
       <div class="barcode-container">
         <img src="${barcodeUrl}" class="barcode" alt="Barcode">
-        <div class="barcode-text">${s.csSample}</div>
+        <div class="barcode-text">${_he(s.csSample)}</div>
       </div>
     </div>
 `;
@@ -447,11 +474,11 @@ function _build2x1(samples, hasCheckbox) {
 
   samples.forEach(function(s) {
     var barcodeUrl = getBarcodeUrl(s.csSample);
-    var containerShort = (s.container || '-').substring(0, 14);
-    var markShort = (s.mark || '-').substring(0, 14);
-    var cargoShort = (s.cargo || '-').substring(0, 14);
-    var warehouseShort = (s.warehouse || '-').substring(0, 10);
-    
+    var containerShort = _he((s.container || '-').substring(0, 14));
+    var markShort = _he((s.mark || '-').substring(0, 14));
+    var cargoShort = _he((s.cargo || '-').substring(0, 14));
+    var warehouseShort = _he((s.warehouse || '-').substring(0, 10));
+
     html += `
     <div class="label">
       <div class="header">CSS | ${warehouseShort}</div>
@@ -459,11 +486,11 @@ function _build2x1(samples, hasCheckbox) {
         <div class="info-item"><span class="info-label">C:</span> ${containerShort}</div>
         <div class="info-item"><span class="info-label">M:</span> ${markShort}</div>
         <div class="info-item"><span class="info-label">Cargo:</span> ${cargoShort}</div>
-        <div class="info-item"><span class="info-label">📦</span> ${(s.receiver || '-').substring(0, 12)}</div>
+        <div class="info-item"><span class="info-label">📦</span> ${_he((s.receiver || '-').substring(0, 12))}</div>
       </div>
       <div class="barcode-container">
         <img src="${barcodeUrl}" class="barcode" alt="Barcode">
-        <div class="barcode-text">${s.csSample}</div>
+        <div class="barcode-text">${_he(s.csSample)}</div>
       </div>
     </div>
 `;
@@ -567,10 +594,15 @@ function printCheckedSamples() {
     return;
   }
 
-  var cache = CacheService.getUserCache();
-  var cacheEntry = { timestamp: Date.now(), samples: samples };
-  cache.put('samplesToPrint', JSON.stringify(cacheEntry), 300);
-  
+  try {
+    var cache = CacheService.getUserCache();
+    var cacheEntry = { timestamp: Date.now(), samples: samples };
+    cache.put('samplesToPrint', JSON.stringify(cacheEntry), 300);
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Cache unavailable — please try again in a moment.\n\n(' + e.message + ')');
+    return;
+  }
+
   var html = HtmlService.createHtmlOutput(generateLabelSizeChooser(samples.length))
     .setWidth(400)
     .setHeight(300)
@@ -651,10 +683,15 @@ function generateLabels() {
     return;
   }
 
-  var cache = CacheService.getUserCache();
-  var cacheEntry = { timestamp: Date.now(), samples: samples };
-  cache.put('samplesToPrint', JSON.stringify(cacheEntry), 300);
-  
+  try {
+    var cache = CacheService.getUserCache();
+    var cacheEntry = { timestamp: Date.now(), samples: samples };
+    cache.put('samplesToPrint', JSON.stringify(cacheEntry), 300);
+  } catch (e) {
+    ui.alert('Cache unavailable — please try again in a moment.\n\n(' + e.message + ')');
+    return;
+  }
+
   var pickerHtml = generateLabelSizePickerNoCheckbox(samples.length);
   var htmlOutput = HtmlService.createHtmlOutput(pickerHtml)
     .setWidth(400)
@@ -725,10 +762,15 @@ function reprintLabel() {
     return;
   }
 
-  var cache = CacheService.getUserCache();
-  var cacheEntry = { timestamp: Date.now(), samples: [sample] };
-  cache.put('samplesToPrint', JSON.stringify(cacheEntry), 300);
-  
+  try {
+    var cache = CacheService.getUserCache();
+    var cacheEntry = { timestamp: Date.now(), samples: [sample] };
+    cache.put('samplesToPrint', JSON.stringify(cacheEntry), 300);
+  } catch (e) {
+    ui.alert('Cache unavailable — please try again in a moment.\n\n(' + e.message + ')');
+    return;
+  }
+
   var pickerHtml = generateLabelSizePickerNoCheckbox(1);
   var htmlOutput = HtmlService.createHtmlOutput(pickerHtml)
     .setWidth(400)

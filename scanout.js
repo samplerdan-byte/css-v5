@@ -235,8 +235,25 @@ function scanOutShipBatch(items, cols) {
 
     for (var i = 0; i < items.length; i++) {
       try {
+        // Guard against null/undefined id or tracking coming from client
+        if (!items[i] || items[i].id == null || items[i].id === '') {
+          results.push({ id: '(unknown)', success: false, message: 'Missing sample ID at index ' + i });
+          continue;
+        }
+        if (items[i].tracking == null || items[i].tracking === '') {
+          results.push({ id: items[i].id, success: false, message: 'Missing tracking number for ' + items[i].id });
+          continue;
+        }
         var sampleId = String(items[i].id).trim();
         var trackingNum = String(items[i].tracking).trim();
+        if (!sampleId) {
+          results.push({ id: items[i].id, success: false, message: 'Blank sample ID at index ' + i });
+          continue;
+        }
+        if (!trackingNum) {
+          results.push({ id: items[i].id, success: false, message: 'Blank tracking number for ' + items[i].id });
+          continue;
+        }
 
         var actualRow = sampleToRow[sampleId];
         if (!actualRow) {
@@ -690,6 +707,12 @@ function submitScan() {
   var value = sb.value.trim();
   sb.value = "";
   if (!value || value.length < 2) { sb.focus(); return; }
+  // Reject pathologically long inputs (scanner glitch / paste of garbage)
+  if (value.length > 256) {
+    setStatus("error", "⚠ Scan too long (" + value.length + " chars) — try again");
+    sb.focus();
+    return;
+  }
 
   if (mode === 0) {
     /* GUARD: reject tracking numbers in sample mode */
@@ -939,9 +962,18 @@ function shipAll() {
           }
         }
         document.getElementById("count").textContent = shippedCount;
-        setStatus("success", "✓ " + r.shipped + " shipped!");
+        var failCount = queue.filter(function(q) { return q.status === "fail"; }).length;
+        var okCount = r.shipped || 0;
+        setStatus(failCount > 0 ? "error" : "success", "✓ " + okCount + " shipped" + (failCount > 0 ? ", " + failCount + " failed" : "!"));
       } else {
-        setStatus("error", r.message);
+        // Top-level failure — mark all "sending" items as failed so they don't stay stuck
+        for (var si = 0; si < queue.length; si++) {
+          if (queue[si].status === "sending") {
+            queue[si].status = "fail";
+            queue[si].error = r.message || "Batch error";
+          }
+        }
+        setStatus("error", r.message || "Batch error");
       }
       renderQueue();
     })

@@ -337,11 +337,23 @@ function createShipmentAndBuyLabel(toAddress, parcel, opts) {
     rate: { id: selectedRate.id }
   });
 
-  Logger.log('Label purchased: tracking=' + buyResult.tracking_code + ', carrier=' + selectedRate.carrier + ' ' + selectedRate.service + ', rate=$' + selectedRate.rate);
+  var trackingCode = buyResult.tracking_code || null;
+  var rawLabelUrl = (buyResult.postage_label && buyResult.postage_label.label_url) ? buyResult.postage_label.label_url : null;
+  // Validate label URL is a real HTTPS URL before returning it
+  var labelUrl = (rawLabelUrl && /^https:\/\/.{5,}/.test(rawLabelUrl)) ? rawLabelUrl : null;
+
+  if (!trackingCode) {
+    Logger.log('WARNING: EasyPost buy succeeded but tracking_code is missing. Shipment ID: ' + buyResult.id);
+  }
+  if (!labelUrl && rawLabelUrl) {
+    Logger.log('WARNING: EasyPost label URL failed validation: ' + rawLabelUrl);
+  }
+
+  Logger.log('Label purchased: tracking=' + (trackingCode || 'MISSING') + ', carrier=' + selectedRate.carrier + ' ' + selectedRate.service + ', rate=$' + selectedRate.rate);
 
   return {
-    trackingNumber: buyResult.tracking_code,
-    labelUrl: buyResult.postage_label ? buyResult.postage_label.label_url : null,
+    trackingNumber: trackingCode,
+    labelUrl: labelUrl,
     carrier: selectedRate.carrier,
     service: selectedRate.service,
     rate: selectedRate.rate,
@@ -376,7 +388,13 @@ function _selectBestRate(rates, preferredCarrier, preferredService) {
   }
 
   // Sort by price, pick cheapest
+  // Safety: if filtering left nothing (unexpected carrier/service combo), fall back to full list
+  if (filtered.length === 0) {
+    Logger.log('_selectBestRate: no rates matched filters (carrier=' + preferredCarrier + ', service=' + preferredService + ') — falling back to cheapest overall');
+    filtered = rates;
+  }
   filtered.sort(function(a, b) { return parseFloat(a.rate) - parseFloat(b.rate); });
+  if (!filtered[0]) throw new Error('No rates available to select from');
   return filtered[0];
 }
 
@@ -476,10 +494,15 @@ function buyLabelForShipment(shipmentId, rateId) {
     rate: { id: rateId }
   });
 
+  var rawLabelUrl2 = (result.postage_label && result.postage_label.label_url) ? result.postage_label.label_url : null;
+  var labelUrl2 = (rawLabelUrl2 && /^https:\/\/.{5,}/.test(rawLabelUrl2)) ? rawLabelUrl2 : null;
+  if (!labelUrl2 && rawLabelUrl2) {
+    Logger.log('WARNING: buyLabelForShipment label URL failed validation: ' + rawLabelUrl2);
+  }
   Logger.log('Label bought: tracking=' + (result.tracking_code || 'none'));
   return {
-    trackingNumber: result.tracking_code,
-    labelUrl: result.postage_label ? result.postage_label.label_url : null,
+    trackingNumber: result.tracking_code || null,
+    labelUrl: labelUrl2,
     carrier: result.selected_rate ? result.selected_rate.carrier : '',
     service: result.selected_rate ? result.selected_rate.service : '',
     rate: result.selected_rate ? result.selected_rate.rate : '',

@@ -244,20 +244,27 @@ function _validatePortalToken(token) {
 
     var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 8).getValues();
 
+    // Scan the entire array — do not return early so execution time does not
+    // reveal whether a token exists vs. is merely inactive.
+    var matchIdx = -1;
     for (var i = 0; i < data.length; i++) {
       if (String(data[i][2]).trim() === token && data[i][3] === true) {
-        // Update last login + count in one batch (cols 6-7)
-        var row = i + 2;
-        var count = parseInt(data[i][6]) || 0;
-        sheet.getRange(row, 6, 1, 2).setValues([[new Date(), count + 1]]);
-        Logger.log('Portal token validated for: ' + String(data[i][0]).trim());
-
-        return {
-          customerName: String(data[i][0]).trim(),
-          matchPattern: String(data[i][1]).trim()
-        };
+        if (matchIdx === -1) matchIdx = i; // record first active match, keep iterating
       }
     }
+
+    if (matchIdx === -1) return null;
+
+    // Update last login + count in one batch (cols 6-7)
+    var matchRow = matchIdx + 2;
+    var count = parseInt(data[matchIdx][6]) || 0;
+    sheet.getRange(matchRow, 6, 1, 2).setValues([[new Date(), count + 1]]);
+    Logger.log('Portal token validated for: ' + String(data[matchIdx][0]).trim());
+
+    return {
+      customerName: String(data[matchIdx][0]).trim(),
+      matchPattern: String(data[matchIdx][1]).trim()
+    };
   } catch (e) {
     Logger.log('Error validating portal token: ' + e.message);
   }
@@ -325,8 +332,8 @@ function getPortalData(token) {
             containerStatus: col['Container Status'] !== undefined ? String(data[i][col['Container Status']] || '') : '',
             containerETA: col['Container ETA'] !== undefined ? String(data[i][col['Container ETA']] || '') : '',
             shippedDate: col['Shipped Date'] !== undefined ? _portalFormatDate(data[i][col['Shipped Date']]) : '',
-            receivedDate: _portalFormatDate(data[i][col['Timestamp']]),
-            source: sheetName
+            receivedDate: _portalFormatDate(data[i][col['Timestamp']])
+            // NOTE: internal sheet name intentionally omitted — not surfaced to customers
           };
 
           result.orders.push(order);

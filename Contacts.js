@@ -203,6 +203,16 @@ function setupContacts() {
     var zip       = String(contactArr[5] || '').trim();
 
     if (!company) return; // Skip empty company names
+
+    // Normalize all contact data before storage (trim and collapse whitespace)
+    company = company.replace(/\s+/g, ' ');
+    attention = attention.replace(/\s+/g, ' ');
+    address = address.replace(/\s+/g, ' ');
+    city = city.replace(/\s+/g, ' ');
+    state = state.replace(/\s+/g, ' ');
+    zip = zip.replace(/\s+/g, ' ');
+
+    // Duplicate check must be case-insensitive
     var key = type + '|' + company.toLowerCase();
     if (existingNames[key]) return;
     existingNames[key] = true;
@@ -240,15 +250,17 @@ function getContactsList() {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName('Contacts');
-    if (!sheet || sheet.getLastRow() < 2) return { shippers: [], receivers: [] };
+    if (!sheet) return { shippers: [], receivers: [] };
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { shippers: [], receivers: [] };
 
-    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 10).getValues();
+    var data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
     var shippers = [];
     var receivers = [];
 
     for (var i = 0; i < data.length; i++) {
-      var type = String(data[i][0]).trim();
-      var company = String(data[i][1]).trim();
+      var type = String(data[i][0] || '').trim();
+      var company = String(data[i][1] || '').trim();
       if (!company) continue;
 
       var contact = {
@@ -304,17 +316,20 @@ function saveNewContact(type, contactData) {
       }
     }
 
+    // Normalize all contact data before storage
+    var normalizeField = function(s) { return String(s || '').trim().replace(/\s+/g, ' '); };
+
     sheet.appendRow([
       type,
-      company,
-      String(contactData.attention || '').trim(),
-      String(contactData.address || '').trim(),
-      String(contactData.city || '').trim(),
-      String(contactData.state || '').trim(),
-      String(contactData.zip || '').trim(),
-      String(contactData.phone || '').trim(),
-      String(contactData.email || '').trim(),
-      String(contactData.notes || '').trim()
+      normalizeField(company),
+      normalizeField(contactData.attention),
+      normalizeField(contactData.address),
+      normalizeField(contactData.city),
+      normalizeField(contactData.state),
+      normalizeField(contactData.zip),
+      normalizeField(contactData.phone),
+      normalizeField(contactData.email),
+      normalizeField(contactData.notes)
     ]);
 
     return { success: true, message: company + ' saved as ' + type };

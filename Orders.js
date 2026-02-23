@@ -1287,59 +1287,6 @@ function processPendingMovesWithAlert() {
 }
 
 // ============================================================
-// DEBUG: Check shipped status
-// ============================================================
-
-function debugCheckShippedStatus() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
-  const ui = SpreadsheetApp.getUi();
-  
-  if (!mainSheet) { ui.alert('Main sheet not found'); return; }
-  
-  var col = _getColumnMap(mainSheet);
-  var statusIdx = col['Status'];
-  var sampleIdx = col['CS Sample #'];
-  
-  if (statusIdx === undefined) { ui.alert('Status column not found'); return; }
-  
-  var lastRow = mainSheet.getLastRow();
-  if (lastRow < 2) { ui.alert('No data'); return; }
-  
-  var data = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn()).getValues();
-  
-  var report = 'Status Column Index: ' + statusIdx + '\n';
-  report += 'Expected "Shipped" value: "' + CONFIG.statusValues.SHIPPED + '"\n\n';
-  report += 'All statuses found:\n';
-  
-  var statusCounts = {};
-  var shippedSamples = [];
-  
-  for (var i = 0; i < data.length; i++) {
-    var status = String(data[i][statusIdx]).trim();
-    statusCounts[status] = (statusCounts[status] || 0) + 1;
-    
-    if (status.toLowerCase() === 'shipped') {
-      shippedSamples.push(data[i][sampleIdx] + ' (status: "' + status + '")');
-    }
-  }
-  
-  for (var s in statusCounts) {
-    report += '  "' + s + '": ' + statusCounts[s] + '\n';
-  }
-  
-  report += '\nShipped samples found: ' + shippedSamples.length + '\n';
-  if (shippedSamples.length > 0) {
-    report += shippedSamples.slice(0, 10).join('\n');
-    if (shippedSamples.length > 10) {
-      report += '\n... and ' + (shippedSamples.length - 10) + ' more';
-    }
-  }
-  
-  ui.alert('Debug: Status Check', report, ui.ButtonSet.OK);
-}
-
-// ============================================================
 // ARCHIVE OLD ORDERS
 // ============================================================
 
@@ -1396,6 +1343,8 @@ function archiveOldOrders() {
   var fileName = 'CSS_Archived_Orders_' + dateStr + '.csv';
   var file = DriveApp.getRootFolder().createFile(fileName, csvContent, MimeType.CSV);
   
+  // CRITICAL: Delete rows in REVERSE order to avoid index shift corruption
+  oldRows.sort(function(a, b) { return b - a; });
   oldRows.forEach(function(rowNum) {
     completedSheet.deleteRow(rowNum);
   });
@@ -1570,6 +1519,9 @@ function getNextOrderNumber() {
 
   var col = _getColumnMap(sheet);
   var csOrderIdx = col['CS Order #'];
+  if (csOrderIdx === undefined) {
+    return { success: false, message: 'CS Order # column not found' };
+  }
   const numRowsToCheck = Math.min(500, lastRow - 1);
   const startRow = lastRow - numRowsToCheck + 1;
   const values = sheet.getRange(startRow, csOrderIdx + 1, numRowsToCheck, 1).getValues();
@@ -1678,6 +1630,17 @@ function addDataToSheet(sheet, data, options) {
     var col = _getColumnMap(sheet);
     var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     var row = new Array(headers.length).fill('');
+
+    // Verify all required columns exist before building row
+    var requiredCols = ['Timestamp', 'CS Order #', 'CS Sample #', 'Sender', 'Receiver',
+                        'Warehouse', 'Description', 'Sample Order #', 'Cargo #', 'Mark #',
+                        'Container #', 'Reference', 'Bag Count', 'Weight', 'Sample Weight',
+                        'P #', 'S #', 'Shipping Process', 'Comments', 'Source Email', 'QR Data', 'Status'];
+    for (var rc = 0; rc < requiredCols.length; rc++) {
+      if (col[requiredCols[rc]] === undefined) {
+        throw new Error('Required column missing: ' + requiredCols[rc]);
+      }
+    }
 
     // Build row by header name
     row[col['Timestamp']] = new Date();

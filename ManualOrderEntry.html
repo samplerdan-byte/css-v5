@@ -223,72 +223,124 @@ var SAMPLE_IDS = ['sContainer','sMark','sCargo','sBags','sPnum','sSnum','sRefere
 // ── State save/restore ──
 function saveState() {
   try {
+    if (!localStorage) return;
     var s = {};
     ['orderNumber','sampleType','warehouse','sampleWeight','shipping','fedexAccount',
-     'shippingLine','eta','shippingNotes'].forEach(function(id) { s[id] = document.getElementById(id).value; });
-    s.shipFrom = document.getElementById('shipFromSelect').value;
-    s.shipTo = document.getElementById('shipToSelect').value;
+     'shippingLine','eta','shippingNotes'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) s[id] = el.value;
+    });
+    var shipFromSelect = document.getElementById('shipFromSelect');
+    if (shipFromSelect) s.shipFrom = shipFromSelect.value;
+    var shipToSelect = document.getElementById('shipToSelect');
+    if (shipToSelect) s.shipTo = shipToSelect.value;
     s.fromNew = newMode.from;
     s.toNew = newMode.to;
     s.fromFields = {}; s.toFields = {};
-    for (var k in FIELD_IDS.from) s.fromFields[k] = document.getElementById(FIELD_IDS.from[k]).value;
-    for (var k in FIELD_IDS.to) s.toFields[k] = document.getElementById(FIELD_IDS.to[k]).value;
+    for (var k in FIELD_IDS.from) {
+      var el = document.getElementById(FIELD_IDS.from[k]);
+      if (el) s.fromFields[k] = el.value;
+    }
+    for (var k in FIELD_IDS.to) {
+      var el = document.getElementById(FIELD_IDS.to[k]);
+      if (el) s.toFields[k] = el.value;
+    }
     s.sample = {};
-    SAMPLE_IDS.forEach(function(id) { s.sample[id] = document.getElementById(id).value; });
+    SAMPLE_IDS.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) s.sample[id] = el.value;
+    });
     s.submitTotal = submitTotal;
     s.addedSamples = addedSamples;
     localStorage.setItem(STATE_KEY, JSON.stringify(s));
-  } catch(e) {}
+  } catch(e) { /* localStorage not available (private browsing) */ }
 }
 
 function restoreState() {
   try {
+    if (!localStorage) return;
     var json = localStorage.getItem(STATE_KEY);
     if (!json) return;
     var s = JSON.parse(json);
+    if (!s) return;
     ['orderNumber','sampleType','warehouse','sampleWeight','shipping','fedexAccount',
      'shippingLine','eta','shippingNotes'].forEach(function(id) {
-      if (s[id] !== undefined) document.getElementById(id).value = s[id];
+      if (s[id] !== undefined) {
+        var el = document.getElementById(id);
+        if (el) el.value = s[id];
+      }
     });
     if (s.fromNew && s.fromFields) { toggleNew('from'); setFields('from', s.fromFields); }
-    else if (s.shipFrom) { document.getElementById('shipFromSelect').value = s.shipFrom; onContactSelect('from'); }
+    else if (s.shipFrom) {
+      var shipFromSelect = document.getElementById('shipFromSelect');
+      if (shipFromSelect) { shipFromSelect.value = s.shipFrom; onContactSelect('from'); }
+    }
     if (s.toNew && s.toFields) { toggleNew('to'); setFields('to', s.toFields); }
-    else if (s.shipTo) { document.getElementById('shipToSelect').value = s.shipTo; onContactSelect('to'); }
-    if (s.sample) SAMPLE_IDS.forEach(function(id) { if (s.sample[id] !== undefined) document.getElementById(id).value = s.sample[id]; });
+    else if (s.shipTo) {
+      var shipToSelect = document.getElementById('shipToSelect');
+      if (shipToSelect) { shipToSelect.value = s.shipTo; onContactSelect('to'); }
+    }
+    if (s.sample) SAMPLE_IDS.forEach(function(id) {
+      if (s.sample[id] !== undefined) {
+        var el = document.getElementById(id);
+        if (el) el.value = s.sample[id];
+      }
+    });
     submitTotal = s.submitTotal || 0;
     addedSamples = s.addedSamples || [];
     if (submitTotal > 0) updateSubmitCount(submitTotal);
     renderHistory();
-  } catch(e) {}
+  } catch(e) { /* JSON parse error or localStorage issue */ }
 }
 
 function setFields(dir, vals) {
   var ids = FIELD_IDS[dir];
-  for (var k in vals) { if (ids[k]) document.getElementById(ids[k]).value = vals[k] || ''; }
+  if (!ids || !vals) return;
+  for (var k in vals) {
+    if (ids[k]) {
+      var el = document.getElementById(ids[k]);
+      if (el) el.value = vals[k] || '';
+    }
+  }
 }
 
 // ── Dropdowns (datalist for type-ahead) ──
 function populateDropdowns() {
   var fromList = document.getElementById('shipFromList');
   var toList = document.getElementById('shipToList');
-  CONTACTS.shippers.forEach(function(c) {
-    var o = document.createElement('option'); o.value = c.company; fromList.appendChild(o);
-  });
-  CONTACTS.receivers.forEach(function(c) {
-    var o = document.createElement('option');
-    o.value = c.company;
-    toList.appendChild(o);
-  });
+  if (!fromList || !toList) return;
+  if (CONTACTS && CONTACTS.shippers && Array.isArray(CONTACTS.shippers)) {
+    CONTACTS.shippers.forEach(function(c) {
+      if (c && c.company) {
+        var o = document.createElement('option');
+        o.value = c.company;
+        fromList.appendChild(o);
+      }
+    });
+  }
+  if (CONTACTS && CONTACTS.receivers && Array.isArray(CONTACTS.receivers)) {
+    CONTACTS.receivers.forEach(function(c) {
+      if (c && c.company) {
+        var o = document.createElement('option');
+        o.value = c.company;
+        toList.appendChild(o);
+      }
+    });
+  }
 }
 
 // Fires as user types — match when exact company found
 function onContactType(dir) {
-  var val = document.getElementById(dir === 'from' ? 'shipFromSelect' : 'shipToSelect').value.trim();
+  var selId = dir === 'from' ? 'shipFromSelect' : 'shipToSelect';
+  var selEl = document.getElementById(selId);
+  if (!selEl) return;
+  var val = selEl.value.trim();
   var c = findContact(dir, val);
   if (c) {
     onContactSelect(dir);
   } else {
-    document.getElementById(dir + 'Preview').className = 'contact-preview';
+    var previewEl = document.getElementById(dir + 'Preview');
+    if (previewEl) previewEl.className = 'contact-preview';
   }
 }
 
@@ -439,6 +491,7 @@ function submitSample() {
 function renderHistory() {
   var sec = document.getElementById('historySection');
   var list = document.getElementById('historyList');
+  if (!sec || !list) return;
   if (addedSamples.length === 0) { sec.style.display = 'none'; return; }
   sec.style.display = 'block';
   list.textContent = '';
@@ -463,6 +516,7 @@ function refreshDD(selId, list, showCity) {
 
 function updateSubmitCount(count) {
   var el = document.getElementById('submitCount');
+  if (!el) return;
   el.textContent = '';
   if (count > 0) {
     el.appendChild(document.createTextNode('Samples added: '));
@@ -474,6 +528,7 @@ function updateSubmitCount(count) {
 
 function showStatus(cls, msg) {
   var el = document.getElementById('statusMsg');
+  if (!el) return;
   el.style.opacity = '1';
   el.style.display = 'block';
   el.className = cls;
@@ -481,36 +536,67 @@ function showStatus(cls, msg) {
   if (fadeTimer) clearTimeout(fadeTimer);
   if (cls === 'msg-success') {
     fadeTimer = setTimeout(function() {
-      el.style.opacity = '0';
-      setTimeout(function() { el.style.display = 'none'; el.className = ''; el.style.opacity = '1'; }, 600);
+      if (el) {
+        el.style.opacity = '0';
+        setTimeout(function() {
+          if (el) { el.style.display = 'none'; el.className = ''; el.style.opacity = '1'; }
+        }, 600);
+      }
     }, 4000);
   }
 }
 function clearStatus() {
-  var el = document.getElementById('statusMsg'); el.className = ''; el.style.display = 'none';
+  var el = document.getElementById('statusMsg');
+  if (el) { el.className = ''; el.style.display = 'none'; }
 }
 
 function clearForm() {
-  try { localStorage.removeItem(STATE_KEY); } catch(e) {}
+  try { if (localStorage) localStorage.removeItem(STATE_KEY); } catch(e) {}
   submitTotal = 0; addedSamples = [];
-  ['orderNumber','fedexAccount','eta','shippingNotes'].forEach(function(id) { document.getElementById(id).value = ''; });
-  document.getElementById('sampleWeight').value = '2 LB';
-  ['sampleType','shipping','shippingLine'].forEach(function(id) { document.getElementById(id).selectedIndex = 0; });
-  document.getElementById('shipFromSelect').value = '';
-  document.getElementById('fromPreview').className = 'contact-preview';
-  document.getElementById('fromFieldsWrap').className = 'contact-fields';
+  ['orderNumber','fedexAccount','eta','shippingNotes'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  var sampleWeightEl = document.getElementById('sampleWeight');
+  if (sampleWeightEl) sampleWeightEl.value = '2 LB';
+  ['sampleType','shipping','shippingLine'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.selectedIndex = 0;
+  });
+  var shipFromSelect = document.getElementById('shipFromSelect');
+  if (shipFromSelect) shipFromSelect.value = '';
+  var fromPreview = document.getElementById('fromPreview');
+  if (fromPreview) fromPreview.className = 'contact-preview';
+  var fromFieldsWrap = document.getElementById('fromFieldsWrap');
+  if (fromFieldsWrap) fromFieldsWrap.className = 'contact-fields';
   newMode.from = false;
-  document.getElementById('fromNewBtn').className = 'new-btn'; document.getElementById('fromNewBtn').textContent = '+ New';
-  for (var k in FIELD_IDS.from) document.getElementById(FIELD_IDS.from[k]).value = '';
-  document.getElementById('shipToSelect').value = '';
-  document.getElementById('toPreview').className = 'contact-preview';
-  document.getElementById('toFieldsWrap').className = 'contact-fields';
+  var fromNewBtn = document.getElementById('fromNewBtn');
+  if (fromNewBtn) { fromNewBtn.className = 'new-btn'; fromNewBtn.textContent = '+ New'; }
+  for (var k in FIELD_IDS.from) {
+    var el = document.getElementById(FIELD_IDS.from[k]);
+    if (el) el.value = '';
+  }
+  var shipToSelect = document.getElementById('shipToSelect');
+  if (shipToSelect) shipToSelect.value = '';
+  var toPreview = document.getElementById('toPreview');
+  if (toPreview) toPreview.className = 'contact-preview';
+  var toFieldsWrap = document.getElementById('toFieldsWrap');
+  if (toFieldsWrap) toFieldsWrap.className = 'contact-fields';
   newMode.to = false;
-  document.getElementById('toNewBtn').className = 'new-btn'; document.getElementById('toNewBtn').textContent = '+ New';
-  for (var k in FIELD_IDS.to) document.getElementById(FIELD_IDS.to[k]).value = '';
-  SAMPLE_IDS.forEach(function(id) { document.getElementById(id).value = ''; });
-  document.getElementById('submitCount').textContent = '';
-  document.getElementById('historySection').style.display = 'none';
+  var toNewBtn = document.getElementById('toNewBtn');
+  if (toNewBtn) { toNewBtn.className = 'new-btn'; toNewBtn.textContent = '+ New'; }
+  for (var k in FIELD_IDS.to) {
+    var el = document.getElementById(FIELD_IDS.to[k]);
+    if (el) el.value = '';
+  }
+  SAMPLE_IDS.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  var submitCountEl = document.getElementById('submitCount');
+  if (submitCountEl) submitCountEl.textContent = '';
+  var historySection = document.getElementById('historySection');
+  if (historySection) historySection.style.display = 'none';
   clearStatus();
 }
 

@@ -284,7 +284,9 @@ function _computeDashMetrics(ss, mainSheet, completedSheet, invSheet, now) {
   _gatherDashData(mainSheet, allOrders);
   _gatherDashData(completedSheet, allOrders);
 
-  var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // Normalize to start of day in script timezone to avoid DST/midnight boundary issues
+  var todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
   var weekAgo = new Date(todayStart.getTime() - 7 * 86400000);
   var monthAgo = new Date(todayStart.getTime() - 30 * 86400000);
 
@@ -424,7 +426,15 @@ function _computeDashMetrics(ss, mainSheet, completedSheet, invSheet, now) {
     var invData = invSheet.getRange(2, 1, invSheet.getLastRow() - 1, invSheet.getLastColumn()).getValues();
     for (var j = 0; j < invData.length; j++) {
       var invStatus = String(invData[j][invCol['Status']]).trim();
-      var invTotal = parseFloat(invData[j][invCol['Total']]) || 0;
+      var invTotalRaw = invData[j][invCol['Total']];
+      var invTotal = 0;
+      // Safe numeric conversion: guard against non-numeric values in Total column
+      if (typeof invTotalRaw === 'number') {
+        invTotal = invTotalRaw;
+      } else if (invTotalRaw) {
+        var parsed = parseFloat(String(invTotalRaw).replace(/[^0-9.-]/g, ''));
+        invTotal = isNaN(parsed) ? 0 : parsed;
+      }
       var invDue = invData[j][invCol['Due Date']];
       if (invStatus === 'Sent' && invDue) {
         var dueD = new Date(invDue);

@@ -24,6 +24,8 @@ function sendDailyCustomerReports() {
 
   // Filter shipped today
   const shippedToday = data.filter(row => {
+    // Guard against missing Shipped Date column
+    if (col['Shipped Date'] === undefined) return false;
     const shippedDate = row[col['Shipped Date']];
     if (!shippedDate) return false;
     const shipDate = new Date(shippedDate);
@@ -55,7 +57,7 @@ function sendDailyCustomerReports() {
     }
   });
 
-  // Group shipped samples by customer
+  // Group shipped samples by customer — filter to ONLY matched customer's samples
   const customerSamples = {};
   shippedToday.forEach(row => {
     const sender = row[col['Sender']] || 'Unknown';
@@ -68,17 +70,18 @@ function sendDailyCustomerReports() {
       }
     }
 
+    // Only include samples from customers with email configuration
     if (matchedCustomer) {
       if (!customerSamples[matchedCustomer]) {
         customerSamples[matchedCustomer] = [];
       }
       customerSamples[matchedCustomer].push({
-        csSample: row[col['CS Sample #']],
-        container: row[col['Container #']],
-        cargo: row[col['Cargo #']],
-        mark: row[col['Mark #']],
-        tracking: row[col['Tracking Number']],
-        description: row[col['Description']]
+        csSample: col['CS Sample #'] !== undefined ? row[col['CS Sample #']] : '',
+        container: col['Container #'] !== undefined ? row[col['Container #']] : '',
+        cargo: col['Cargo #'] !== undefined ? row[col['Cargo #']] : '',
+        mark: col['Mark #'] !== undefined ? row[col['Mark #']] : '',
+        tracking: col['Tracking Number'] !== undefined ? row[col['Tracking Number']] : '',
+        description: col['Description'] !== undefined ? row[col['Description']] : ''
       });
     }
   });
@@ -139,15 +142,20 @@ function sendDailyCustomerReports() {
     body += '</table>';
     body += '<p style="color: #666; margin-top: 20px;">This is an automated report from Commodity Sampler Services.</p>';
 
-    let sendStatus = 'Unknown';
+      let sendStatus = 'Unknown';
     try {
       if (!config.emails || config.emails.length === 0) {
-        throw new Error('No valid email addresses');
+        throw new Error('No valid email addresses configured');
       }
-      GmailApp.sendEmail(config.emails.join(','), subject, '', { htmlBody: body });
+      // Validate email format before sending
+      var validEmails = config.emails.filter(function(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); });
+      if (validEmails.length === 0) {
+        throw new Error('No valid email addresses in configuration');
+      }
+      GmailApp.sendEmail(validEmails.join(','), subject, '', { htmlBody: body });
       sent++;
       sendStatus = 'Sent';
-      Logger.log('sendDailyCustomerReports: Sent report to ' + config.name + ': ' + config.emails.join(', '));
+      Logger.log('sendDailyCustomerReports: Sent report to ' + config.name + ': ' + validEmails.join(', '));
     } catch (e) {
       sendStatus = 'Failed: ' + e.message;
       failed.push(config.name + ': ' + e.message);

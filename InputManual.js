@@ -25,10 +25,53 @@ function processManualOrderEntry(orderData) {
 
   if (!sheet) return { success: false, message: 'Sheet "' + CONFIG.mainSheetName + '" not found.' };
 
+  // CRITICAL: Validate ALL samples, not just the first
   if (orderData.samples && orderData.samples.length > 0) {
-    var validation = validateOrderData(orderData.samples[0]);
-    if (!validation.valid) {
-      return { success: false, message: '⚠️ Validation error:\n' + validation.errors.join('\n') };
+    for (var vs = 0; vs < orderData.samples.length; vs++) {
+      var validation = validateOrderData(orderData.samples[vs]);
+      if (!validation.valid) {
+        return { success: false, message: '⚠️ Validation error in sample ' + (vs + 1) + ':\n' + validation.errors.join('\n') };
+      }
+    }
+  }
+
+  // Check for duplicate submission: if all samples already exist with same container+mark+receiver within last 10 minutes
+  if (orderData.samples && orderData.samples.length > 0) {
+    var col = _getColumnMap(sheet);
+    var lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      var tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+      var recentData = sheet.getRange(Math.max(2, lastRow - 50), 1, Math.min(50, lastRow - 1), sheet.getLastColumn()).getValues();
+      var timestampIdx = col['Timestamp'];
+      var allSamplesExist = true;
+
+      for (var ds = 0; ds < orderData.samples.length; ds++) {
+        var sample = orderData.samples[ds];
+        var sampleContainer = String(sample.container || '').trim();
+        var sampleMark = String(sample.marks || '').trim();
+        var sampleFound = false;
+
+        for (var ri = 0; ri < recentData.length; ri++) {
+          var rowTs = recentData[ri][timestampIdx];
+          if (rowTs && new Date(rowTs) > tenMinutesAgo) {
+            var rowContainer = String(recentData[ri][col['Container #']] || '').trim();
+            var rowMark = String(recentData[ri][col['Mark #']] || '').trim();
+            if (sampleContainer && sampleMark && rowContainer === sampleContainer && rowMark === sampleMark) {
+              sampleFound = true;
+              break;
+            }
+          }
+        }
+
+        if (!sampleFound) {
+          allSamplesExist = false;
+          break;
+        }
+      }
+
+      if (allSamplesExist) {
+        return { success: false, message: '⚠️ Duplicate submission detected: all samples already entered in the last 10 minutes.\n\nIf this is intentional, wait a moment and try again.' };
+      }
     }
   }
 

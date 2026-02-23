@@ -195,6 +195,7 @@
   var busy = false;
 
   function handleKey(e) {
+    if (!e) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendQuestion();
@@ -202,17 +203,21 @@
   }
 
   function askSuggestion(el) {
-    document.getElementById('questionInput').value = el.textContent;
+    if (!el) return;
+    var input = document.getElementById('questionInput');
+    if (input) input.value = el.textContent;
     sendQuestion();
   }
 
   function sendQuestion() {
     var input = document.getElementById('questionInput');
+    if (!input) return;
     var question = input.value.trim();
     if (!question || busy) return;
 
     busy = true;
-    document.getElementById('sendBtn').disabled = true;
+    var sendBtn = document.getElementById('sendBtn');
+    if (sendBtn) sendBtn.disabled = true;
 
     // Hide suggestions after first question
     var sug = document.getElementById('suggestions');
@@ -228,39 +233,42 @@
     google.script.run
       .withSuccessHandler(function(result) {
         removeLoading(loadingId);
-        if (result.success) {
+        if (!result) {
+          addMessage('No response from server. Please try again.', 'error');
+        } else if (result.success) {
           addMessage(result.message, 'ai');
         } else {
-          addMessage(result.message, 'error');
+          addMessage(result.message || 'An error occurred. Please try again.', 'error');
         }
         busy = false;
-        document.getElementById('sendBtn').disabled = false;
-        input.focus();
+        if (sendBtn) sendBtn.disabled = false;
+        if (input) input.focus();
       })
       .withFailureHandler(function(err) {
         removeLoading(loadingId);
-        addMessage('Connection error. Please try again.', 'error');
+        addMessage('Connection error. Please check your connection and try again.', 'error');
         busy = false;
-        document.getElementById('sendBtn').disabled = false;
-        input.focus();
+        if (sendBtn) sendBtn.disabled = false;
+        if (input) input.focus();
       })
       .askAiAssistant(question);
   }
 
   function addMessage(text, type) {
     var container = document.getElementById('messages');
+    if (!container) return;
     var div = document.createElement('div');
-    div.className = 'msg msg-' + type;
+    div.className = 'msg msg-' + (type || 'error');
 
     if (type === 'ai') {
       // Safely render text with line breaks using DOM APIs
-      var lines = String(text).split('\n');
+      var lines = String(text || '').split('\n');
       lines.forEach(function(line, idx) {
         if (idx > 0) div.appendChild(document.createElement('br'));
         div.appendChild(document.createTextNode(line));
       });
     } else {
-      div.textContent = text;
+      div.textContent = String(text || '(No message)');
     }
 
     container.appendChild(div);
@@ -269,6 +277,7 @@
 
   function showLoading() {
     var container = document.getElementById('messages');
+    if (!container) return null;
     var div = document.createElement('div');
     var id = 'loading-' + Date.now();
     div.id = id;
@@ -284,12 +293,16 @@
   }
 
   function removeLoading(id) {
+    if (!id) return;
     var el = document.getElementById(id);
-    if (el) el.remove();
+    if (el && el.parentNode) el.remove();
   }
 
-  // Auto-focus input
-  document.getElementById('questionInput').focus();
+  // Auto-focus input on load
+  window.addEventListener('load', function() {
+    var input = document.getElementById('questionInput');
+    if (input) input.focus();
+  });
 </script>
 </body>
 </html>

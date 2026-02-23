@@ -25,7 +25,7 @@ function generateEndOfDayReport() {
 
   var col = _getColumnMap(sheet);
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) { ui.alert('No data rows found.'); return; }
+  if (lastRow < 2) { if (ui) ui.alert('No data rows found.'); return; }
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
 
   let received = 0, scanned = 0, shipped = 0;
@@ -33,6 +33,9 @@ function generateEndOfDayReport() {
   const warehouseCounts = {};
 
   data.forEach(row => {
+    // Guard against missing Timestamp column
+    if (col['Timestamp'] === undefined) return;
+
     const rowDate = new Date(row[col['Timestamp']]);
     rowDate.setHours(0, 0, 0, 0);
 
@@ -46,7 +49,7 @@ function generateEndOfDayReport() {
       warehouseCounts[warehouse] = (warehouseCounts[warehouse] || 0) + 1;
     }
 
-    const scannedDate = row[col['Scanned Date']];
+    const scannedDate = col['Scanned Date'] !== undefined ? row[col['Scanned Date']] : null;
     if (scannedDate) {
       const scanDate = new Date(scannedDate);
       scanDate.setHours(0, 0, 0, 0);
@@ -55,7 +58,7 @@ function generateEndOfDayReport() {
       }
     }
 
-    const shippedDate = row[col['Shipped Date']];
+    const shippedDate = col['Shipped Date'] !== undefined ? row[col['Shipped Date']] : null;
     if (shippedDate) {
       const shipDate = new Date(shippedDate);
       shipDate.setHours(0, 0, 0, 0);
@@ -593,8 +596,8 @@ function sendWarehouseFieldReport(warehouseName) {
   var emails = emailConfig[warehouseName] || '';
   if (!emails) return { success: false, message: 'No email addresses for ' + warehouseName + '. Setup → Setup Warehouse Emails.' };
 
-  var recipients = emails.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
-  if (recipients.length === 0) return { success: false, message: 'No valid emails for ' + warehouseName };
+  var recipients = emails.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); });
+  if (recipients.length === 0) return { success: false, message: 'No valid email addresses for ' + warehouseName };
 
   var today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   var customerNames = Object.keys(warehouseData).sort();

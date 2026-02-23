@@ -254,14 +254,19 @@
       // Token is passed server-side via template, or we parse from URL hash/param
       // For GAS web apps, we use google.script.url.getLocation()
       return new Promise(function(resolve) {
-        if (typeof google !== 'undefined' && google.script && google.script.url) {
-          google.script.url.getLocation(function(loc) {
-            resolve(loc.parameter.token || '');
-          });
-        } else {
-          // Fallback: parse from window.location
-          var params = new URLSearchParams(window.location.search);
-          resolve(params.get('token') || '');
+        try {
+          if (typeof google !== 'undefined' && google.script && google.script.url) {
+            google.script.url.getLocation(function(loc) {
+              resolve((loc && loc.parameter && loc.parameter.token) || '');
+            });
+          } else {
+            // Fallback: parse from window.location
+            var params = new URLSearchParams(window.location.search);
+            resolve(params.get('token') || '');
+          }
+        } catch(e) {
+          console.warn('Token extraction error:', e);
+          resolve('');
         }
       });
     }
@@ -301,18 +306,28 @@
     }
 
     function showPortal(data) {
-      document.getElementById('loadingScreen').style.display = 'none';
-      document.getElementById('authError').style.display = 'none';
-      document.getElementById('portalMain').style.display = 'block';
+      if (!data) return showAuthError();
+      var loadingScreen = document.getElementById('loadingScreen');
+      var authError = document.getElementById('authError');
+      var portalMain = document.getElementById('portalMain');
+      if (loadingScreen) loadingScreen.style.display = 'none';
+      if (authError) authError.style.display = 'none';
+      if (portalMain) portalMain.style.display = 'block';
 
       // Welcome banner
-      document.getElementById('welcomeBanner').textContent = data.customerName;
+      var welcomeBanner = document.getElementById('welcomeBanner');
+      if (welcomeBanner) welcomeBanner.textContent = data.customerName || 'Welcome';
 
-      // Stats
-      document.getElementById('statTotal').textContent = data.stats.total;
-      document.getElementById('statReceived').textContent = data.stats.received;
-      document.getElementById('statScanned').textContent = data.stats.scanned;
-      document.getElementById('statShipped').textContent = data.stats.shipped;
+      // Stats — handle missing data
+      var stats = data.stats || { total: 0, received: 0, scanned: 0, shipped: 0 };
+      var statTotal = document.getElementById('statTotal');
+      var statReceived = document.getElementById('statReceived');
+      var statScanned = document.getElementById('statScanned');
+      var statShipped = document.getElementById('statShipped');
+      if (statTotal) statTotal.textContent = stats.total || 0;
+      if (statReceived) statReceived.textContent = stats.received || 0;
+      if (statScanned) statScanned.textContent = stats.scanned || 0;
+      if (statShipped) statShipped.textContent = stats.shipped || 0;
 
       // Store orders for filtering
       allOrders = data.orders || [];
@@ -321,15 +336,17 @@
       renderOrders(allOrders);
 
       // Refresh timestamp
-      document.getElementById('refreshTime').textContent = new Date().toLocaleString();
+      var refreshTime = document.getElementById('refreshTime');
+      if (refreshTime) refreshTime.textContent = new Date().toLocaleString();
     }
 
     // ── Render Orders ──
     function renderOrders(orders) {
       var list = document.getElementById('orderList');
       var empty = document.getElementById('emptyState');
+      if (!list || !empty) return;
 
-      if (orders.length === 0) {
+      if (!orders || orders.length === 0) {
         list.textContent = '';
         empty.style.display = 'block';
         return;
@@ -416,10 +433,13 @@
 
     // ── Filter ──
     function filterOrders() {
-      var search = document.getElementById('searchInput').value.toLowerCase();
-      var status = document.getElementById('statusFilter').value;
+      var searchInput = document.getElementById('searchInput');
+      var statusFilter = document.getElementById('statusFilter');
+      var search = (searchInput && searchInput.value) ? searchInput.value.toLowerCase() : '';
+      var status = (statusFilter && statusFilter.value) ? statusFilter.value : '';
 
       var filtered = allOrders.filter(function(o) {
+        if (!o) return false;
         // Status filter
         if (status) {
           if (status === 'Scanned' && o.status !== 'Scanned') return false;
@@ -441,18 +461,25 @@
     }
 
     // ── Auto-refresh every 2 minutes ──
-    setInterval(function() {
+    var refreshTimer = setInterval(function() {
       if (portalToken) {
         google.script.run
           .withSuccessHandler(function(result) {
-            if (result && result.success) {
+            if (result && result.success && result.orders) {
               allOrders = result.orders || [];
-              document.getElementById('statTotal').textContent = result.stats.total;
-              document.getElementById('statReceived').textContent = result.stats.received;
-              document.getElementById('statScanned').textContent = result.stats.scanned;
-              document.getElementById('statShipped').textContent = result.stats.shipped;
+              var statTotal = document.getElementById('statTotal');
+              var statReceived = document.getElementById('statReceived');
+              var statScanned = document.getElementById('statScanned');
+              var statShipped = document.getElementById('statShipped');
+              var refreshTime = document.getElementById('refreshTime');
+              if (result.stats) {
+                if (statTotal) statTotal.textContent = result.stats.total || 0;
+                if (statReceived) statReceived.textContent = result.stats.received || 0;
+                if (statScanned) statScanned.textContent = result.stats.scanned || 0;
+                if (statShipped) statShipped.textContent = result.stats.shipped || 0;
+              }
               filterOrders(); // Re-render with current filters
-              document.getElementById('refreshTime').textContent = new Date().toLocaleString();
+              if (refreshTime) refreshTime.textContent = new Date().toLocaleString();
             }
           })
           .withFailureHandler(function(err) {
@@ -462,6 +489,11 @@
           .getPortalData(portalToken);
       }
     }, 120000);
+
+    // Clean up timer on unload
+    window.addEventListener('beforeunload', function() {
+      if (refreshTimer) clearInterval(refreshTimer);
+    });
 
     // ── Initialize ──
     loadData();
