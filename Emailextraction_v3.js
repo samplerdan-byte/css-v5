@@ -1180,21 +1180,21 @@ function extractReferences(text, client) {
 function detectWarehouse(text) {
   text = text.toLowerCase();
   // Continental — try specific address first, then general
-  if (text.indexOf('300 middlesex') >= 0) return 'CONTINENTAL_300';
+  if (text.indexOf('300 middlesex') >= 0 || text.indexOf('mac lane') >= 0 || text.indexOf('keasby') >= 0) return 'CONTINENTAL_300';
   if (text.indexOf('continental') >= 0 || text.indexOf(' cti') >= 0 || text.indexOf('\ncti') >= 0 ||
       text.indexOf('cti ') >= 0 || text.indexOf('200 middlesex') >= 0 || text.indexOf('carteret') >= 0) {
     return 'CONTINENTAL_200';
   }
-  // RPM — try specific locations first, then general
+  // RPM — try specific locations first, then general fallback
+  if (text.indexOf('northdale') >= 0 || text.indexOf('6462 northdale') >= 0) return 'RPM_NORTHDALE';
   if (text.indexOf('2900 woodbridge') >= 0 || text.indexOf('rpm woodbridge') >= 0) return 'RPM_WOODBRIDGE';
   if (text.indexOf('talmage') >= 0 || text.indexOf('rpm talmage') >= 0) return 'RPM_TALMAGE';
   if (text.indexOf('1500 rahway') >= 0 || text.indexOf('avenel') >= 0 || text.indexOf('rpm avenel') >= 0) return 'RPM_AVENEL';
   if (text.indexOf('rpm') >= 0 || text.indexOf('edison') >= 0) return 'RPM_AVENEL';
   // Other warehouses
-  if (text.indexOf('florence warehouse') >= 0 || text.indexOf('florence wh') >= 0) return 'Florence';
-  if (text.indexOf('cadeco') >= 0) return 'Cadeco';
-  if (text.indexOf('dupuy') >= 0) return 'Dupuy';
-  if (text.indexOf('northdale') >= 0 || text.indexOf('rpm northdale') >= 0) return 'RPM_NORTHDALE';
+  if (text.indexOf('florence warehouse') >= 0 || text.indexOf('florence wh') >= 0 || text.indexOf('mecca') >= 0 || text.indexOf('580 marin') >= 0) return 'Florence';
+  if (text.indexOf('cadeco') >= 0 || text.indexOf('5610 clinton') >= 0) return 'Cadeco';
+  if (text.indexOf('dupuy') >= 0 || text.indexOf('7703 cannon') >= 0) return 'Dupuy';
   return null;
 }
 
