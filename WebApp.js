@@ -66,7 +66,7 @@ function doGet(e) {
   // Default: full web app
   return HtmlService.createTemplateFromFile('WebAppScanner')
     .evaluate()
-    .setTitle('CSS V3 — Commodity Sampler Services')
+    .setTitle('CSS V5 — Commodity Sampler Services')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }

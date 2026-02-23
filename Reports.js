@@ -11,11 +11,13 @@
 // ============================================================
 
 function generateEndOfDayReport() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui;
+  try { ui = SpreadsheetApp.getUi(); } catch(e) { ui = null; }
+  try {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(CONFIG.mainSheetName);
-  const ui = SpreadsheetApp.getUi();
 
-  if (!sheet) { ui.alert('Sheet not found!'); return; }
+  if (!sheet) { if (ui) ui.alert('Sheet not found!'); return; }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -123,7 +125,11 @@ function generateEndOfDayReport() {
 `;
 
   const htmlOutput = HtmlService.createHtmlOutput(html).setWidth(700).setHeight(700);
-  ui.showModalDialog(htmlOutput, 'End of Day Report');
+  if (ui) ui.showModalDialog(htmlOutput, 'End of Day Report');
+  } catch(e) {
+    if (typeof logError === 'function') logError('generateEndOfDayReport', e.message, { stack: e.stack });
+    if (ui) ui.alert('Error generating report: ' + e.message);
+  }
 }
 
 // ============================================================

@@ -35,8 +35,13 @@ function getClientIndex() {
   var allSheet = ss.getSheetByName(SHEET_NAMES.allOrders);
   if (!allSheet) return { error: 'All Orders sheet not found' };
 
-  var allData = allSheet.getDataRange().getValues();
-  var headers = allData[0];
+  var lastRow = allSheet.getLastRow();
+  var lastCol = allSheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return { error: 'Sheet empty' };
+
+  // Load only headers + needed columns instead of entire sheet
+  var headers = allSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var allData = allSheet.getRange(1, 1, lastRow, lastCol).getValues();
   var sampleCol = findSampleColumn(headers);
 
   var cols = {

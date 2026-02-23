@@ -8,10 +8,15 @@
  * Called from Menu.js via menu item.
  */
 function openAiAssistant() {
-  var html = HtmlService.createHtmlOutputFromFile('AiAssistant')
-    .setTitle('AI Assistant')
-    .setWidth(400);
-  SpreadsheetApp.getUi().showSidebar(html);
+  try {
+    var html = HtmlService.createHtmlOutputFromFile('AiAssistant')
+      .setTitle('AI Assistant')
+      .setWidth(400);
+    SpreadsheetApp.getUi().showSidebar(html);
+  } catch (e) {
+    logError('openAiAssistant', e.message);
+    SpreadsheetApp.getUi().alert('Could not open AI Assistant: ' + e.message);
+  }
 }
 
 /**
@@ -201,7 +206,13 @@ function _callClaude(systemPrompt, userMessage, apiKey) {
     muteHttpExceptions: true
   };
 
-  var response = UrlFetchApp.fetch(url, options);
+  var response;
+  try {
+    response = UrlFetchApp.fetch(url, options);
+  } catch (fetchErr) {
+    logError('_callClaude', 'Network error: ' + fetchErr.message);
+    return { success: false, message: 'Network error reaching Claude API. Check your connection and try again.' };
+  }
   var code = response.getResponseCode();
 
   if (code !== 200) {
@@ -233,7 +244,7 @@ function _callClaude(systemPrompt, userMessage, apiKey) {
   }
 
   // Handle stop reasons
-  if (json.stop_reason === 'max_tokens') {
+  if (json.stop_reason === 'max_tokens' && json.content && json.content.length > 0 && json.content[0].text) {
     return { success: true, message: json.content[0].text + '\n\n(Response truncated — ask a more specific question for details.)' };
   }
 

@@ -688,9 +688,27 @@ function extractOrderFromEmail(emailBody, pdfText, senderEmail, subject) {
     result.orders = extractGeneric(cleanedEmailBody, cleanedPdfText, subject);
   }
 
-  // Post-process: validate references
+  // Post-process: normalize + validate extracted data
   for (var i = 0; i < result.orders.length; i++) {
-    result.orders[i].reference = validateReference(result.orders[i].reference, result.orders[i].container);
+    var o = result.orders[i];
+
+    // Normalize container: uppercase, strip dashes/spaces, validate 11 chars
+    if (o.container) {
+      o.container = String(o.container).toUpperCase().replace(/[-\s]/g, '').trim();
+      if (o.container.length !== 11 || !/^[A-Z]{4}\d{7}$/.test(o.container)) {
+        if (typeof logWarning === 'function') {
+          logWarning('extractOrderFromEmail', 'Unusual container format: ' + o.container, { client: (result.client || {}).name });
+        }
+      }
+    }
+
+    // Ensure receiver is always a string (some parsers return objects)
+    if (o.receiver && typeof o.receiver === 'object') {
+      o.receiver = o.receiver.name || o.receiver.address || '';
+    }
+
+    // Validate reference
+    o.reference = validateReference(o.reference, o.container);
   }
 
   // Flag incomplete orders
@@ -896,6 +914,7 @@ function extractByClientType(client, emailBody, pdfText, subject) {
   }
 
   // Generic extractor for Olam, Paragon, Excelco, Covoya, etc.
+  Logger.log('Using generic extractor for: ' + client.name);
   var allText = (emailBody || '') + '\n' + (pdfText || '');
   var orders = [];
 
@@ -905,6 +924,10 @@ function extractByClientType(client, emailBody, pdfText, subject) {
   var references  = extractReferences(allText, client);
   var warehouse   = detectWarehouse(allText) || client.warehouse;
   var receivers   = extractReceivers(emailBody, pdfText, client);
+
+  Logger.log('Generic extraction fields — containers:' + containers.length +
+    ' marks:' + marks.length + ' cargos:' + cargos.length +
+    ' receivers:' + receivers.length + ' warehouse:' + (warehouse || 'none'));
   var bagCounts   = extractBagCounts(allText);
 
   var sampleSizeResult = extractSampleSize(allText, client.defaultSampleSize || '2 lb');

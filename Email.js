@@ -88,21 +88,26 @@ function sendDailyCustomerReports() {
     return;
   }
 
-  // Preview before sending
+  // Collect all operations for single pass: preview, send, and log
   let preview = 'Ready to send reports:\n\n';
+  let sent = 0;
+  var sendResults = {};  // track per-pattern success/failure
+  var failed = [];
+  const reportLogSheet = ss.getSheetByName('Daily Report Log');
+
   for (const pattern in customerSamples) {
     const config = customerEmails[pattern];
-    preview += `• ${config.name}: ${customerSamples[pattern].length} samples\n`;
+    const samples = customerSamples[pattern];
+
+    // Build preview
+    preview += `• ${config.name}: ${samples.length} samples\n`;
     preview += `  To: ${config.emails.join(', ')}\n\n`;
   }
 
   const response = ui.alert('Send Daily Reports?', preview, ui.ButtonSet.YES_NO);
   if (response !== ui.Button.YES) return;
 
-  // Send emails
-  let sent = 0;
-  var sendResults = {};  // track per-pattern success/failure
-  var failed = [];
+  // Single pass: send emails and log results
   for (const pattern in customerSamples) {
     const config = customerEmails[pattern];
     const samples = customerSamples[pattern];
@@ -134,31 +139,36 @@ function sendDailyCustomerReports() {
     body += '</table>';
     body += '<p style="color: #666; margin-top: 20px;">This is an automated report from Commodity Sampler Services.</p>';
 
+    let sendStatus = 'Unknown';
     try {
+      if (!config.emails || config.emails.length === 0) {
+        throw new Error('No valid email addresses');
+      }
       GmailApp.sendEmail(config.emails.join(','), subject, '', { htmlBody: body });
       sent++;
-      sendResults[pattern] = 'Sent';
+      sendStatus = 'Sent';
       Logger.log('Sent report to ' + config.name + ': ' + config.emails.join(', '));
     } catch (e) {
-      sendResults[pattern] = 'Failed: ' + e.message;
+      sendStatus = 'Failed: ' + e.message;
       failed.push(config.name + ': ' + e.message);
       Logger.log('Failed to send to ' + config.name + ': ' + e);
     }
-  }
+    sendResults[pattern] = sendStatus;
 
-  // Log the reports — only log actual status per customer
-  const reportLogSheet = ss.getSheetByName('Daily Report Log');
-  if (reportLogSheet) {
-    for (const pattern in customerSamples) {
-      const config = customerEmails[pattern];
-      reportLogSheet.appendRow([
-        new Date(),
-        config.name,
-        customerSamples[pattern].length,
-        config.emails.join(', '),
-        sendResults[pattern] || 'Unknown',
-        Session.getActiveUser().getEmail()
-      ]);
+    // Log the report result immediately
+    if (reportLogSheet) {
+      try {
+        reportLogSheet.appendRow([
+          new Date(),
+          config.name,
+          samples.length,
+          config.emails.join(', '),
+          sendStatus,
+          Session.getActiveUser().getEmail()
+        ]);
+      } catch (e) {
+        Logger.log('Failed to log report for ' + config.name + ': ' + e);
+      }
     }
   }
 
@@ -166,6 +176,7 @@ function sendDailyCustomerReports() {
   if (failed.length > 0) {
     msg += '\n\nFAILED (' + failed.length + '):\n' + failed.join('\n');
   }
+  Logger.log('sendDailyCustomerReports() completed: ' + sent + ' sent, ' + failed.length + ' failed');
   ui.alert('Reports Status', msg, ui.ButtonSet.OK);
 }
 
@@ -230,7 +241,14 @@ function getEmailHtmlFromLink(emailLink) {
     }
 
     var threadId = match[1];
-    var thread = GmailApp.getThreadById(threadId);
+    var thread = null;
+    try {
+      thread = GmailApp.getThreadById(threadId);
+    } catch (gmailErr) {
+      Logger.log('GmailApp.getThreadById() error for threadId ' + threadId + ': ' + gmailErr);
+      return null;
+    }
+
     if (!thread) {
       Logger.log('Thread not found: ' + threadId);
       return null;

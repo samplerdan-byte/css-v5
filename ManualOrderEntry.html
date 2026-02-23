@@ -2,7 +2,6 @@
 <html>
 <head>
   <base target="_top">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; padding: 12px; background: #f9f9f9; font-size: 13px; }
@@ -77,24 +76,10 @@
         <label>Sample Type</label>
         <select id="sampleType">
           <option value="Warehouse Sample">📦 Warehouse Sample</option>
-          <option value="Intensive 10%">🔬 Intensive 10%</option>
-          <option value="Intensive 20%">🔬 Intensive 20%</option>
-          <option value="Intensive 30%">🔬 Intensive 30%</option>
-          <option value="Intensive 50%">🔬 Intensive 50%+</option>
           <option value="Photos With Sample">📷 Photos With Sample</option>
-          <option value="Photos Without Sample">📷 Photos Without Sample</option>
-          <option value="Container Supervision Inbound">🔍 Container Supervision — In</option>
-          <option value="Container Supervision Outbound">🔍 Container Supervision — Out</option>
-          <option value="Keurig 30%">☕ Keurig 30%</option>
-          <option value="Barrel Sampling">🛢️ Barrel Sampling</option>
+          <option value="Container Supervision">🔍 Container Supervision</option>
           <option value="FCC Grading-Cocoa">🏷️ FCC Grading-Cocoa</option>
-          <option value="Cocoa Butter Inventory">🏷️ Cocoa Butter Inventory</option>
-          <option value="Moisture Reading">💧 Moisture Reading</option>
-          <option value="Screening">🔍 Screening</option>
-          <option value="Inspection">🔎 Inspection</option>
-          <option value="Sifting">🔎 Sifting</option>
           <option value="Exchange Samples">☕ Exchange Samples</option>
-          <option value="Vessel Supervision">🚢 Vessel Supervision</option>
         </select>
       </div>
     </div>
@@ -116,19 +101,6 @@
         </select>
       </div>
       <div><label>FedEx Account</label><input type="text" id="fedexAccount" placeholder="Optional"></div>
-    </div>
-    <div class="row">
-      <div><label>B/L #</label><input type="text" id="bolNumber" placeholder="Bill of Lading #"></div>
-      <div>
-        <label>Ship Status</label>
-        <select id="shipStatus">
-          <option value="">-- None --</option>
-          <option value="Afloat">Afloat</option><option value="Landed">Landed</option>
-          <option value="Discharged">Discharged</option><option value="At Warehouse">At Warehouse</option>
-          <option value="In Transit">In Transit</option><option value="Customs Hold">Customs Hold</option>
-          <option value="Released">Released</option>
-        </select>
-      </div>
     </div>
     <div class="row">
       <div>
@@ -196,7 +168,7 @@
   <div class="form-section">
     <h3>☕ Sample Details <span style="font-weight:normal;color:#888;font-size:10px;">— tweak fields between submits</span></h3>
     <div class="row">
-      <div><label>Container</label><input type="text" id="sContainer" placeholder="ABCD1234567" style="text-transform:uppercase;"></div>
+      <div><label>Container</label><input type="text" id="sContainer" placeholder="ABCD1234567"></div>
       <div><label>Mark</label><input type="text" id="sMark" placeholder="003/0123/456"></div>
     </div>
     <div class="row">
@@ -239,14 +211,12 @@ var FIELD_IDS = {
 
 var SAMPLE_IDS = ['sContainer','sMark','sCargo','sBags','sPnum','sSnum','sReference','sDescription'];
 
-function _esc(s) { if (!s) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
 // ── State save/restore ──
 function saveState() {
   try {
     var s = {};
     ['orderNumber','sampleType','warehouse','sampleWeight','shipping','fedexAccount',
-     'bolNumber','shipStatus','shippingLine','eta','shippingNotes'].forEach(function(id) { s[id] = document.getElementById(id).value; });
+     'shippingLine','eta','shippingNotes'].forEach(function(id) { s[id] = document.getElementById(id).value; });
     s.shipFrom = document.getElementById('shipFromSelect').value;
     s.shipTo = document.getElementById('shipToSelect').value;
     s.fromNew = newMode.from;
@@ -268,7 +238,7 @@ function restoreState() {
     if (!json) return;
     var s = JSON.parse(json);
     ['orderNumber','sampleType','warehouse','sampleWeight','shipping','fedexAccount',
-     'bolNumber','shipStatus','shippingLine','eta','shippingNotes'].forEach(function(id) {
+     'shippingLine','eta','shippingNotes'].forEach(function(id) {
       if (s[id] !== undefined) document.getElementById(id).value = s[id];
     });
     if (s.fromNew && s.fromFields) { toggleNew('from'); setFields('from', s.fromFields); }
@@ -327,10 +297,10 @@ function onContactSelect(dir) {
   if (!company) { preview.className = 'contact-preview'; return; }
   var c = findContact(dir, company);
   if (!c) return;
-  var lines = [_esc(c.company)];
-  if (c.attention) lines.push('Attn: ' + _esc(c.attention));
-  if (c.address) lines.push(_esc(c.address));
-  var cl = [c.city, c.state].filter(Boolean).join(', '); if (c.zip) cl += ' ' + c.zip; if (cl) lines.push(_esc(cl));
+  var lines = [c.company];
+  if (c.attention) lines.push('Attn: ' + c.attention);
+  if (c.address) lines.push(c.address);
+  var cl = [c.city, c.state].filter(Boolean).join(', '); if (c.zip) cl += ' ' + c.zip; if (cl) lines.push(cl);
   preview.innerHTML = lines.join('<br>');
   preview.className = 'contact-preview show';
   document.getElementById(dir + 'FieldsWrap').className = 'contact-fields';
@@ -381,19 +351,13 @@ function getContactData(dir) {
 // ── Submit one sample ──
 function submitSample() {
   var btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = 'Adding...';
   clearStatus();
 
   var sender = getContactData('from');
   var receiver = getContactData('to');
-
-  // Client-side validation before server round-trip
-  if (!sender.company) { showStatus('msg-error', 'Shipper company is required.'); return; }
-  if (!receiver.company) { showStatus('msg-error', 'Receiver company is required.'); return; }
-  if (!document.getElementById('warehouse').value) { showStatus('msg-error', 'Warehouse is required.'); return; }
-
-  btn.disabled = true; btn.textContent = 'Adding...';
   var sample = {
-    container: document.getElementById('sContainer').value.trim().toUpperCase(),
+    container: document.getElementById('sContainer').value.trim(),
     marks: document.getElementById('sMark').value.trim(),
     cargo: document.getElementById('sCargo').value.trim(),
     bags: document.getElementById('sBags').value.trim(),
@@ -414,8 +378,6 @@ function submitSample() {
     eta: document.getElementById('eta').value,
     shippingLine: document.getElementById('shippingLine').value,
     shippingNotes: document.getElementById('shippingNotes').value.trim(),
-    bolNumber: document.getElementById('bolNumber').value.trim(),
-    shipStatus: document.getElementById('shipStatus').value,
     sender: sender,
     receiver: receiver,
     samples: [sample]
@@ -435,12 +397,6 @@ function submitSample() {
         showStatus('msg-success', '✅ #' + submitTotal + ': ' + label);
         renderHistory();
         saveState();
-        if (fadeTimer) clearTimeout(fadeTimer);
-        fadeTimer = setTimeout(function() {
-          var el = document.getElementById('statusMsg');
-          el.style.opacity = '0';
-          setTimeout(function() { el.className = ''; el.style.display = 'none'; el.style.opacity = '1'; }, 600);
-        }, 4000);
         if (sender.isNew && sender.save && sender.company) {
           google.script.run.saveNewContact('Shipper', sender);
           CONTACTS.shippers.push(sender); refreshDD('shipFromSelect', CONTACTS.shippers, false);
@@ -468,7 +424,7 @@ function renderHistory() {
   sec.style.display = 'block';
   var html = '';
   for (var i = addedSamples.length - 1; i >= 0; i--) {
-    html += '<div class="hist-item">#' + (i + 1) + ' — ' + _esc(addedSamples[i]) + '</div>';
+    html += '<div class="hist-item">#' + (i + 1) + ' — ' + addedSamples[i] + '</div>';
   }
   list.innerHTML = html;
 }
@@ -485,7 +441,14 @@ function refreshDD(selId, list, showCity) {
 }
 
 function showStatus(cls, msg) {
-  var el = document.getElementById('statusMsg'); el.style.display = 'block'; el.style.opacity = '1'; el.className = cls; el.textContent = msg;
+  var el = document.getElementById('statusMsg'); el.style.opacity = '1'; el.className = cls; el.textContent = msg;
+  if (fadeTimer) clearTimeout(fadeTimer);
+  if (cls === 'msg-success') {
+    fadeTimer = setTimeout(function() {
+      el.style.opacity = '0';
+      setTimeout(function() { el.className = ''; el.style.display = 'none'; el.style.opacity = '1'; }, 600);
+    }, 4000);
+  }
 }
 function clearStatus() {
   var el = document.getElementById('statusMsg'); el.className = ''; el.style.display = 'none';
@@ -494,9 +457,9 @@ function clearStatus() {
 function clearForm() {
   try { localStorage.removeItem(STATE_KEY); } catch(e) {}
   submitTotal = 0; addedSamples = [];
-  ['orderNumber','fedexAccount','bolNumber','eta','shippingNotes'].forEach(function(id) { document.getElementById(id).value = ''; });
+  ['orderNumber','fedexAccount','eta','shippingNotes'].forEach(function(id) { document.getElementById(id).value = ''; });
   document.getElementById('sampleWeight').value = '2 LB';
-  ['sampleType','shipping','shippingLine','shipStatus'].forEach(function(id) { document.getElementById(id).selectedIndex = 0; });
+  ['sampleType','shipping','shippingLine'].forEach(function(id) { document.getElementById(id).selectedIndex = 0; });
   document.getElementById('shipFromSelect').value = '';
   document.getElementById('fromPreview').className = 'contact-preview';
   document.getElementById('fromFieldsWrap').className = 'contact-fields';

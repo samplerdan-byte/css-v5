@@ -234,6 +234,10 @@
     .capture-area input[type="file"] { display: none; }
 
     /* ── Responsive ── */
+    @media (max-width: 500px) {
+      .drop-zone { min-height: 120px; padding: 20px; }
+      .drop-zone .icon { font-size: 36px; }
+    }
     @media (max-width: 400px) {
       .form-grid { grid-template-columns: 1fr; }
       .form-field.span2 { grid-column: span 1; }
@@ -496,7 +500,6 @@
     var isPhotoScanning = false;
     var lastScan = '';
     var lastScanTime = 0;
-    var processingLock = false;  // double-submit guard for scan processing
 
     // Photo state
     var currentPhotoSample = null;    // { csSample, sender, description, ... }
@@ -551,7 +554,6 @@
 
     function startScanner() {
       if (isScanning) return;
-      setStatusBar('scanStatus', 'working', '⏳ Initializing camera...');
 
       // FIX: Pass formatsToSupport in the constructor, NOT in start() config
       html5QrCode = new Html5Qrcode("qr-reader", {
@@ -610,14 +612,11 @@
     }
 
     function processScanResult(code) {
-      if (processingLock) return;
-      processingLock = true;
       setStatusBar('scanStatus', 'working', '⏳ Processing ' + code + '...');
 
       if (scanMode === 'receive') {
         google.script.run
           .withSuccessHandler(function(r) {
-            processingLock = false;
             if (r.success) {
               scanCount++;
               document.getElementById('scanCount').textContent = scanCount;
@@ -629,7 +628,6 @@
             }
           })
           .withFailureHandler(function(e) {
-            processingLock = false;
             setStatusBar('scanStatus', 'error', '❌ ' + e.message);
             addScanHistory(code, false, e.message);
           })
@@ -638,14 +636,12 @@
       } else if (scanMode === 'ship') {
         var tracking = document.getElementById('trackingInput').value.trim();
         if (!tracking) {
-          processingLock = false;
           setStatusBar('scanStatus', 'error', '⚠️ Enter tracking number first!');
           document.getElementById('trackingInput').focus();
           return;
         }
         google.script.run
           .withSuccessHandler(function(r) {
-            processingLock = false;
             if (r.success) {
               scanCount++;
               document.getElementById('scanCount').textContent = scanCount;
@@ -657,7 +653,6 @@
             }
           })
           .withFailureHandler(function(e) {
-            processingLock = false;
             setStatusBar('scanStatus', 'error', '❌ ' + e.message);
             addScanHistory(code, false, e.message);
           })
@@ -666,7 +661,6 @@
       } else if (scanMode === 'lookup') {
         google.script.run
           .withSuccessHandler(function(r) {
-            processingLock = false;
             if (r.success && r.type === 'found') {
               setStatusBar('scanStatus', 'success', r.message);
               addScanHistory(code, true, r.message);
@@ -681,7 +675,6 @@
             }
           })
           .withFailureHandler(function(e) {
-            processingLock = false;
             setStatusBar('scanStatus', 'error', '❌ ' + e.message);
             addScanHistory(code, false, e.message);
           })
@@ -696,14 +689,12 @@
       var time = new Date().toLocaleTimeString();
       var div = document.createElement('div');
       div.className = 'hist-item ' + (ok ? 'ok' : 'fail');
-      var hid = document.createElement('span'); hid.className = 'hid'; hid.textContent = (ok ? '✅ ' : '❌ ') + id;
-      var hmsg = document.createElement('span'); hmsg.className = 'hmsg'; hmsg.textContent = time;
-      div.appendChild(hid); div.appendChild(hmsg);
+      div.innerHTML = '<span class="hid">' + (ok ? '✅' : '❌') + ' ' + id + '</span>' +
+                      '<span class="hmsg">' + time + '</span>';
       list.insertBefore(div, list.firstChild);
     }
 
     function clearScanHistory() {
-      if (!confirm('Clear all scan history? This cannot be undone.')) return;
       scanCount = 0;
       document.getElementById('scanCount').textContent = '0';
       document.getElementById('scanHistory').innerHTML = '';
@@ -712,10 +703,8 @@
     }
 
     // ── Lookup Result Display ──
-    function _esc(s) { if (!s) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
     function showLookupResult(data) {
-      var html = '<div class="card"><h3>📋 ' + _esc(data.csSample || '?') + '</h3><div class="form-grid">';
+      var html = '<div class="card"><h3>📋 ' + (data.csSample || '?') + '</h3><div class="form-grid">';
       var fields = [
         ['CS Order', data.csOrder], ['Status', data.status],
         ['Sender', data.sender], ['Receiver', data.receiver],
@@ -729,7 +718,7 @@
         if (f[1]) {
           html += '<div class="form-field"><label>' + f[0] + '</label>' +
                   '<div style="padding:6px;background:#f9f9f9;border-radius:4px;font-size:13px;font-weight:bold;">' +
-                  _esc(f[1]) + '</div></div>';
+                  f[1] + '</div></div>';
         }
       });
       html += '</div></div>';
@@ -837,11 +826,11 @@
     function showSamplePhotoInfo(data, existingPhotos) {
       var infoEl = document.getElementById('photoSampleInfo');
       var html = '<div class="sample-info">' +
-        '<div class="sample-id">📋 ' + _esc(data.csSample || '?') + '</div>' +
+        '<div class="sample-id">📋 ' + (data.csSample || '?') + '</div>' +
         '<div class="sample-detail">' +
-          (data.sender ? _esc(data.sender) + ' — ' : '') +
-          _esc(data.description || '') +
-          (data.warehouse ? ' (' + _esc(data.warehouse) + ')' : '') +
+          (data.sender ? data.sender + ' — ' : '') +
+          (data.description || '') +
+          (data.warehouse ? ' (' + data.warehouse + ')' : '') +
         '</div>';
       if (data.photoLinks) {
         html += '<div class="existing-photos">📎 Photos already linked</div>';
@@ -951,11 +940,11 @@
               renderPendingPhotos();
               if (pendingPhotos.length === 0) {
                 setStatusBar('photoStatus', 'success', '✅ All ' + total + ' photo(s) uploaded for ' + sampleId);
-                // Refresh existing photos only when all succeeded
-                loadSampleForPhoto();
               } else {
                 setStatusBar('photoStatus', 'error', '⚠️ Some photos failed — tap Upload to retry');
               }
+              // Refresh existing photos
+              loadSampleForPhoto();
             } else {
               setStatusBar('photoStatus', 'working', '⏳ Uploaded ' + uploaded + '/' + total + '...');
             }
@@ -1019,7 +1008,7 @@
       var previewEl = document.getElementById('extractPreview');
       var formEl = document.getElementById('extractedOrderForm');
       previewEl.innerHTML = '<div class="extract-preview"><h4>📄 Extracted Text</h4>' +
-        '<div class="raw">' + (rawText || 'No text').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div></div>';
+        '<div class="raw">' + (rawText || 'No text').replace(/</g, '&lt;') + '</div></div>';
       previewEl.style.display = 'block';
 
       if (samples && samples.length > 0) {
@@ -1032,7 +1021,7 @@
          ['Sample Weight','dropWeight',s.sampleWeight],['Reference','dropRef',s.reference]
         ].forEach(function(f) {
           formHtml += '<div class="form-field"><label>' + f[0] + '</label>' +
-            '<input type="text" id="' + f[1] + '" value="' + (f[2]||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '"></div>';
+            '<input type="text" id="' + f[1] + '" value="' + (f[2]||'').replace(/"/g,'&quot;') + '"></div>';
         });
         formHtml += '</div><div class="btn-row">' +
           '<button class="btn btn-primary btn-block" onclick="submitDroppedOrder()">📤 Submit Order</button></div></div>';
@@ -1042,8 +1031,6 @@
     }
 
     function submitDroppedOrder() {
-      var btn = document.querySelector('#extractedOrderForm .btn-primary');
-      if (btn) btn.disabled = true;
       setStatusBar('dropStatus', 'working', '⏳ Submitting...');
       var orderData = {
         sender: document.getElementById('dropSender').value.trim(),
@@ -1066,14 +1053,12 @@
               '<div class="status-bar success">✅ Order submitted!</div>';
           } else setStatusBar('dropStatus', 'error', r.message);
         })
-        .withFailureHandler(function(e) { if (btn) btn.disabled = false; setStatusBar('dropStatus', 'error', '❌ ' + e.message); })
+        .withFailureHandler(function(e) { setStatusBar('dropStatus', 'error', '❌ ' + e.message); })
         .webAppSubmitOrder(orderData);
     }
 
     // ── Manual Order Entry ──
     function submitManualOrder() {
-      var submitBtn = document.querySelector('[onclick="submitManualOrder()"]');
-      if (submitBtn) submitBtn.disabled = true;
       setStatusBar('entryStatus', 'working', '⏳ Submitting...');
       var senderVal = document.getElementById('entrySender').value;
       if (senderVal === '_other_') senderVal = prompt('Enter sender/client name:') || '';
@@ -1096,17 +1081,15 @@
       };
 
       if (!orderData.sender && !orderData.sampleOrderNum && !orderData.container) {
-        if (submitBtn) submitBtn.disabled = false;
         setStatusBar('entryStatus', 'error', '⚠️ Need at least sender, order #, or container #'); return;
       }
 
       google.script.run
         .withSuccessHandler(function(r) {
-          if (submitBtn) submitBtn.disabled = false;
           if (r.success) setStatusBar('entryStatus', 'success', r.message);
           else setStatusBar('entryStatus', 'error', r.message);
         })
-        .withFailureHandler(function(e) { if (submitBtn) submitBtn.disabled = false; setStatusBar('entryStatus', 'error', '❌ ' + e.message); })
+        .withFailureHandler(function(e) { setStatusBar('entryStatus', 'error', '❌ ' + e.message); })
         .webAppSubmitOrder(orderData);
     }
 

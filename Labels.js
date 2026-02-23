@@ -44,9 +44,25 @@ function generateLabelsWithSizeNoCheckbox(size) {
 
 function _getSamplesFromCache(removeAfter) {
   var cache = CacheService.getUserCache();
-  var json = cache.get('samplesToPrint');
-  if (!json) return null;
-  var samples = JSON.parse(json);
+  var cached = cache.get('samplesToPrint');
+  if (!cached) return null;
+
+  var cacheEntry;
+  try {
+    cacheEntry = JSON.parse(cached);
+  } catch (e) {
+    // Corrupted cache — remove it and treat as expired
+    cache.remove('samplesToPrint');
+    return null;
+  }
+
+  // Check timestamp (expire after 10 minutes = 600000 ms)
+  if (cacheEntry.timestamp && (Date.now() - cacheEntry.timestamp) > 600000) {
+    cache.remove('samplesToPrint');
+    return null;
+  }
+
+  var samples = cacheEntry.samples;
   if (removeAfter) cache.remove('samplesToPrint');
   return samples;
 }
@@ -463,11 +479,22 @@ function _build2x1(samples, hasCheckbox) {
 
 function clearPrintCheckboxesFromCache() {
   var cache = CacheService.getUserCache();
-  var samplesJson = cache.get('samplesToPrint');
-  if (!samplesJson) return;
-  
-  var samples = JSON.parse(samplesJson);
-  clearPrintCheckboxes(samples);
+  var cached = cache.get('samplesToPrint');
+  if (!cached) return;
+
+  var cacheEntry;
+  try {
+    cacheEntry = JSON.parse(cached);
+  } catch (e) {
+    // Corrupted cache — just remove it
+    cache.remove('samplesToPrint');
+    return;
+  }
+
+  var samples = cacheEntry.samples;
+  if (samples && samples.length > 0) {
+    clearPrintCheckboxes(samples);
+  }
   cache.remove('samplesToPrint');
 }
 
@@ -539,9 +566,10 @@ function printCheckedSamples() {
     SpreadsheetApp.getUi().alert('No samples checked for printing. Check the Print column for rows you want to print.');
     return;
   }
-  
+
   var cache = CacheService.getUserCache();
-  cache.put('samplesToPrint', JSON.stringify(samples), 300);
+  var cacheEntry = { timestamp: Date.now(), samples: samples };
+  cache.put('samplesToPrint', JSON.stringify(cacheEntry), 300);
   
   var html = HtmlService.createHtmlOutput(generateLabelSizeChooser(samples.length))
     .setWidth(400)
@@ -622,9 +650,10 @@ function generateLabels() {
     ui.alert('No rows selected');
     return;
   }
-  
+
   var cache = CacheService.getUserCache();
-  cache.put('samplesToPrint', JSON.stringify(samples), 300);
+  var cacheEntry = { timestamp: Date.now(), samples: samples };
+  cache.put('samplesToPrint', JSON.stringify(cacheEntry), 300);
   
   var pickerHtml = generateLabelSizePickerNoCheckbox(samples.length);
   var htmlOutput = HtmlService.createHtmlOutput(pickerHtml)
@@ -695,9 +724,10 @@ function reprintLabel() {
     ui.alert('No sample number found in this row');
     return;
   }
-  
+
   var cache = CacheService.getUserCache();
-  cache.put('samplesToPrint', JSON.stringify([sample]), 300);
+  var cacheEntry = { timestamp: Date.now(), samples: [sample] };
+  cache.put('samplesToPrint', JSON.stringify(cacheEntry), 300);
   
   var pickerHtml = generateLabelSizePickerNoCheckbox(1);
   var htmlOutput = HtmlService.createHtmlOutput(pickerHtml)

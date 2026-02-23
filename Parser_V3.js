@@ -1,4 +1,34 @@
 // ============================================================================
+// PARSER FRAGILITY NOTES — Last updated: Feb 2026
+// ============================================================================
+// These client-specific parsers are tuned to each trading house's PDF/email
+// format. They are INHERENTLY BRITTLE — format changes from the client will
+// break extraction. This is expected and acceptable.
+//
+// When a parser fails:
+// 1. Check the Error Log sheet for crash details (try-catch in extractByClientType)
+// 2. Check Logger output for parser metrics (success rate per client)
+// 3. Compare the new PDF format against the regex patterns below
+// 4. Get a sample email from Dan and test with RunTestOrder.js
+//
+// Parser registry (13 custom + generic fallback):
+// - Serengeti: "Quality:" section headers, P-numbers for containers
+// - Atlantic: Dash-separated marks (003-0279-6076), PDF table format
+// - Ally: Email body parsing, container/mark/cargo in lines
+// - Armenia: Simple format, one order per email
+// - Amcof: Multi-sample emails, table-style data
+// - Coffee America: PDF-heavy, delivery order format
+// - InterAmerican (NKG): Complex multi-receiver emails
+// - ICC: Multi-line entries, cargo-anchored
+// - Osito: Cargo-based anchor patterns
+// - Rothfos (NKG): PDF table extraction
+// - LDC (Louis Dreyfus): 4-part mark format, OCR-sensitive
+// - Sucafina: Email body + PDF combo
+// - Coffee Source: Simple single-order format
+// - Generic: Catches Olam, Paragon, Excelco, Covoya, and others
+// ============================================================================
+
+// ============================================================================
 // Parser_V3.gs
 // Commodity Sampler Services — Custom Client Parsers
 //

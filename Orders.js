@@ -9,7 +9,12 @@
 // HELPER: Get all samples for an order across ALL sheets
 // ============================================================
 
+// In-memory cache for getAllSamplesForOrder — cleared on each new script execution.
+var _getAllSamplesCache = {};
+
 function getAllSamplesForOrder(csOrderNum) {
+  if (_getAllSamplesCache[csOrderNum]) return _getAllSamplesCache[csOrderNum];
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   var sheetsToSearch = [
@@ -114,8 +119,10 @@ function getAllSamplesForOrder(csOrderNum) {
   samples.sort(function(a, b) {
     return a.csSample.localeCompare(b.csSample);
   });
-  
-  return { orderInfo: orderInfo, samples: samples };
+
+  var result = { orderInfo: orderInfo, samples: samples };
+  _getAllSamplesCache[csOrderNum] = result;
+  return result;
 }
 
 // ============================================================
@@ -260,28 +267,25 @@ function printTodaysCoverSheets() {
   
   var fullOrders = {};
   var totalSamples = 0;
-  
+  var emailCount = 0;
+
   orderKeys.forEach(function(csOrderNum) {
     var result = getAllSamplesForOrder(csOrderNum);
+    var emailHtml = null;
+    if (result.orderInfo.emailLink) {
+      var emailData = getEmailHtmlFromLink(result.orderInfo.emailLink);
+      if (emailData) {
+        emailHtml = emailData;
+        emailCount++;
+      }
+    }
     fullOrders[csOrderNum] = {
       orderInfo: result.orderInfo,
       samples: result.samples,
       rows: ordersToday[csOrderNum].rows,
-      emailHtml: null
+      emailHtml: emailHtml
     };
     totalSamples += result.samples.length;
-  });
-  
-  var emailCount = 0;
-  orderKeys.forEach(function(csOrderNum) {
-    var emailLink = fullOrders[csOrderNum].orderInfo.emailLink;
-    if (emailLink) {
-      var emailData = getEmailHtmlFromLink(emailLink);
-      if (emailData) {
-        fullOrders[csOrderNum].emailHtml = emailData;
-        emailCount++;
-      }
-    }
   });
   
   var response = ui.alert(
@@ -770,7 +774,9 @@ function generateOrderDetailsHtml(order, samples) {
 function markCoverSheetsAsPrinted() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(CONFIG.mainSheetName);
-  
+
+  if (!sheet) return 'Error: Main sheet not found';
+
   var col = _getColumnMap(sheet);
   var coverSheetPrintedIdx = col['Cover Sheet Printed'];
   
@@ -1354,12 +1360,17 @@ function archiveOldOrders() {
   
   if (response !== ui.Button.YES) return;
   
-  var headers = completedSheet.getRange(1, 1, 1, completedSheet.getLastColumn()).getValues()[0];
+  var lastColForCsv = completedSheet.getLastColumn();
+  var headers = completedSheet.getRange(1, 1, 1, lastColForCsv).getValues()[0];
   var csvContent = headers.map(escapeCSVField).join(',') + '\n';
-  
-  oldRows.forEach(function(rowNum) {
-    var rowData = completedSheet.getRange(rowNum, 1, 1, completedSheet.getLastColumn()).getValues()[0];
-    csvContent += rowData.map(escapeCSVField).join(',') + '\n';
+
+  // Batch-read all archived rows in one API call instead of one call per row.
+  // data[] is already loaded above; oldRows contains 1-based sheet row numbers (descending).
+  // Map them back to 0-based data indices (rowNum - 2) and collect in forward order for CSV.
+  var oldRowIndices = oldRows.slice().reverse(); // ascending order for CSV
+  oldRowIndices.forEach(function(rowNum) {
+    var dataIdx = rowNum - 2; // row 2 → index 0
+    csvContent += data[dataIdx].map(escapeCSVField).join(',') + '\n';
   });
   
   var dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');

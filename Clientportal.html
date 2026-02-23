@@ -87,7 +87,7 @@
       font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
       white-space: nowrap;
     }
-    .badge-received { background: #fef3c7; color: #92400e; }
+    .badge-received { background: #fbbf24; color: #78350f; }
     .badge-scanned { background: #dbeafe; color: #1e40af; }
     .badge-shipped { background: #d1fae5; color: #065f46; }
     .badge-completed { background: #d1fae5; color: #065f46; }
@@ -335,7 +335,7 @@
         var statusLabel = o.status || 'Unknown';
         if (statusLower === 'scanned') statusLabel = 'In Progress';
 
-        html += '<div class="order-card status-' + statusLower + '" role="button" tabindex="0" onclick="toggleCard(this)" onkeypress="if(event.key===\'Enter\')toggleCard(this)" data-idx="' + idx + '">';
+        html += '<div class="order-card status-' + statusLower + '" onclick="toggleCard(this)" data-idx="' + idx + '">';
 
         // Top row
         html += '<div class="order-top">';
@@ -418,7 +418,9 @@
         return true;
       });
 
+      var scrollY = window.scrollY || window.pageYOffset;
       renderOrders(filtered);
+      window.scrollTo(0, scrollY);
     }
 
     // ── Auto-refresh every 2 minutes ──
@@ -435,9 +437,6 @@
               filterOrders(); // Re-render with current filters
               document.getElementById('refreshTime').textContent = new Date().toLocaleString();
             }
-          })
-          .withFailureHandler(function(err) {
-            console.log('Auto-refresh failed:', err);
           })
           .getPortalData(portalToken);
       }

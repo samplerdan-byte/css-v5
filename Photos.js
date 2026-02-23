@@ -215,6 +215,7 @@ function webAppUploadPhoto(sampleIds, base64Data, fileName, mimeType) {
 
   } catch (e) {
     Logger.log('webAppUploadPhoto error: ' + e);
+    if (typeof logError === 'function') logError('webAppUploadPhoto', e.message, { stack: e.stack, sampleCount: (sampleIds || []).length });
     return { success: false, message: '❌ Upload error: ' + e.message };
   }
 }

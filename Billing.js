@@ -997,13 +997,14 @@ function exportInvoicesQBO() {
   var folder = DriveApp.getRootFolder();
   var file = folder.createFile(fileName, csvContent, MimeType.CSV);
   
-  var qbExportedCol = invCol['QB Exported'];
-  var qbExportDateCol = invCol['QB Export Date'];
+  var qbExportedCol = invCol['QB Exported'] + 1;
+  var qbExportDateCol = invCol['QB Export Date'] + 1;
+  var exportedNow = new Date();
+  // Write both QB columns in one setValues() call per row (adjacent columns)
   unexported.forEach(function(inv) {
-    invSheet.getRange(inv.sheetRow, qbExportedCol + 1).setValue(true);
-    invSheet.getRange(inv.sheetRow, qbExportDateCol + 1).setValue(new Date());
+    invSheet.getRange(inv.sheetRow, qbExportedCol, 1, 2).setValues([[true, exportedNow]]);
   });
-  
+
   ui.alert(
     '✅ QuickBooks Export Complete!\n\n' +
     'Exported ' + unexported.length + ' invoice(s) to:\n' +
@@ -1101,13 +1102,14 @@ function exportInvoicesIIF() {
   var folder = DriveApp.getRootFolder();
   var file = folder.createFile(fileName, iif, MimeType.PLAIN_TEXT);
   
-  var qbExportedCol = invCol['QB Exported'];
-  var qbExportDateCol = invCol['QB Export Date'];
+  var qbExportedCol = invCol['QB Exported'] + 1;
+  var qbExportDateCol = invCol['QB Export Date'] + 1;
+  var exportedNow = new Date();
+  // Write both QB columns in one setValues() call per row (adjacent columns)
   unexported.forEach(function(inv) {
-    invSheet.getRange(inv.sheetRow, qbExportedCol + 1).setValue(true);
-    invSheet.getRange(inv.sheetRow, qbExportDateCol + 1).setValue(new Date());
+    invSheet.getRange(inv.sheetRow, qbExportedCol, 1, 2).setValues([[true, exportedNow]]);
   });
-  
+
   ui.alert(
     '✅ QuickBooks Desktop Export Complete!\n\n' +
     'Exported ' + unexported.length + ' invoice(s) to:\n' +
@@ -1559,11 +1561,8 @@ function editLineItemService() {
   var rate = rates[newCode];
   var qty = parseFloat(sheet.getRange(row, 9).getValue()) || 1;
   
-  sheet.getRange(row, 3).setValue(newCode);
-  sheet.getRange(row, 4).setValue(rate.description);
-  sheet.getRange(row, 10).setValue(rate.unit);
-  sheet.getRange(row, 11).setValue(rate.rate);
-  sheet.getRange(row, 12).setValue(qty * rate.rate);
+  sheet.getRange(row, 3, 1, 2).setValues([[newCode, rate.description]]);
+  sheet.getRange(row, 10, 1, 3).setValues([[rate.unit, rate.rate, qty * rate.rate]]);
   
   var invNum = String(sheet.getRange(row, 1).getValue()).trim();
   _recalcInvoiceTotal(invNum);
@@ -1573,10 +1572,17 @@ function editLineItemService() {
 
 function _recalcInvoiceTotal(invoiceNum) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var liSheet = ss.getSheetByName(BILLING_CONFIG.lineItemsSheetName);
-  var invSheet = ss.getSheetByName(BILLING_CONFIG.invoicesSheetName);
+  var liSheet, invSheet;
+  try {
+    liSheet = ss.getSheetByName(BILLING_CONFIG.lineItemsSheetName);
+    invSheet = ss.getSheetByName(BILLING_CONFIG.invoicesSheetName);
+  } catch(e) {
+    Logger.log('_recalcInvoiceTotal: sheet access error — ' + e);
+    return;
+  }
   if (!liSheet || !invSheet) return;
-  
+  if (liSheet.getLastRow() < 2 || invSheet.getLastRow() < 2) return;
+
   var liData = liSheet.getRange(2, 1, liSheet.getLastRow() - 1, 12).getValues();
   var subtotal = 0;
   var shippingFee = 0;
@@ -1598,8 +1604,7 @@ function _recalcInvoiceTotal(invoiceNum) {
     shippingFee = subtotal * (rates['SHIP-FEE'].rate / 100);
     for (var i = 0; i < liData.length; i++) {
       if (String(liData[i][0]).trim().toUpperCase() === invoiceNum && String(liData[i][2]).trim() === 'SHIP-FEE') {
-        liSheet.getRange(i + 2, 11).setValue(shippingFee);
-        liSheet.getRange(i + 2, 12).setValue(shippingFee);
+        liSheet.getRange(i + 2, 11, 1, 2).setValues([[shippingFee, shippingFee]]);
         break;
       }
     }
@@ -1611,9 +1616,7 @@ function _recalcInvoiceTotal(invoiceNum) {
   var invCol = _getColumnMap(invSheet);
   for (var i = 0; i < invData.length; i++) {
     if (String(invData[i][invCol['Invoice #']]).trim().toUpperCase() === invoiceNum) {
-      invSheet.getRange(i + 2, invCol['Subtotal'] + 1).setValue(subtotal);
-      invSheet.getRange(i + 2, invCol['Shipping Fee'] + 1).setValue(shippingFee);
-      invSheet.getRange(i + 2, invCol['Total'] + 1).setValue(total);
+      invSheet.getRange(i + 2, invCol['Subtotal'] + 1, 1, 3).setValues([[subtotal, shippingFee, total]]);
       break;
     }
   }
