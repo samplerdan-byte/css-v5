@@ -22,6 +22,7 @@ function generateEndOfDayReport() {
 
   var col = _getColumnMap(sheet);
   const lastRow = sheet.getLastRow();
+  if (lastRow < 2) { ui.alert('No data rows found.'); return; }
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
 
   let received = 0, scanned = 0, shipped = 0;
@@ -306,133 +307,7 @@ function updateFieldReportCell(rowNumber, columnName, newValue) {
   }
 }
 
-// ============================================================
-// FIELD REPORT — GENERATE OFFLINE VERSION
-// (Called by "Save Offline" button in field report sidebar)
-// ============================================================
-
-function generateOfflineFieldReport() {
-  try {
-    var reportData = getFieldReportData();
-    var warehouseNames = Object.keys(reportData.warehouses).sort();
-
-    if (warehouseNames.length === 0) {
-      return { success: false, message: 'No active orders found.' };
-    }
-
-    var today = new Date();
-    var dateStr = today.toLocaleDateString('en-US', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-    });
-
-    var grandTotal = 0;
-
-    // Build warehouse sections
-    var sections = warehouseNames.map(function(wh) {
-      var customers = reportData.warehouses[wh];
-      var customerNames = Object.keys(customers).sort();
-
-      var customerHtml = customerNames.map(function(cust) {
-        var orders = customers[cust];
-        var orderKeys = Object.keys(orders).sort(function(a, b) {
-          return (orders[a].sortDate || 0) - (orders[b].sortDate || 0);
-        });
-
-        var ordersHtml = orderKeys.map(function(orderNum) {
-          var order = orders[orderNum];
-          var receiverNames = Object.keys(order.receivers);
-          var multiRecv = receiverNames.length > 1;
-
-          var shipParts = [];
-          if (order.shippingLine) shipParts.push(order.shippingLine);
-          if (order.shippingNotes) shipParts.push(order.shippingNotes);
-          if (order.vesselStatus) shipParts.push(order.vesselStatus);
-          var shipStr = shipParts.join(' &middot; ');
-
-          var receiverSections = receiverNames.map(function(recv) {
-            var samples = order.receivers[recv];
-            grandTotal += samples.length;
-
-            var recvHdr = multiRecv
-              ? '<tr><td colspan="7" style="padding:4px 8px;font-weight:bold;color:#2E5339;border-top:1px dashed #ccc;font-size:11px;">&rarr; ' + recv + '</td></tr>'
-              : '';
-
-            var rows = samples.map(function(s, idx) {
-              var bg = idx % 2 === 0 ? '#fff' : '#f9f9f9';
-              var recvCell = !multiRecv ? '<td style="padding:3px 4px;border-bottom:1px solid #eee;font-size:10px;">' + recv + '</td>' : '';
-              return '<tr style="background:' + bg + ';">' +
-                '<td style="padding:3px 4px;border-bottom:1px solid #eee;font-size:10px;">' + (s.reference || '') + '</td>' +
-                '<td style="padding:3px 4px;border-bottom:1px solid #eee;font-size:10px;max-width:200px;">' + (s.description || '') + '</td>' +
-                '<td style="padding:3px 4px;border-bottom:1px solid #eee;font-size:10px;">' + (s.mark || '') + '</td>' +
-                '<td style="padding:3px 4px;border-bottom:1px solid #eee;font-size:10px;">' + (s.container || '') + '</td>' +
-                '<td style="padding:3px 4px;border-bottom:1px solid #eee;font-size:10px;">' + (s.cargo || '') + '</td>' +
-                recvCell +
-                '<td style="padding:3px 4px;border-bottom:1px solid #eee;font-size:10px;">' + (s.bagCount || '') + '</td>' +
-                '<td style="padding:3px 4px;border-bottom:1px solid #eee;font-size:10px;">' + (s.sampleWeight || '') + '</td>' +
-                '</tr>';
-            }).join('');
-
-            return recvHdr + rows;
-          }).join('');
-
-          return '<tr style="background:#e8f5e9;">' +
-            '<td colspan="8" style="padding:5px 8px;font-size:11px;">' +
-            '<strong>' + orderNum + '</strong> &nbsp; ' +
-            '<span style="color:#555;">' + shipStr + '</span>' +
-            '<span style="float:right;color:#c0392b;font-weight:bold;">ETA: ' + (order.eta || 'N/A') + '</span>' +
-            '</td></tr>' +
-            receiverSections;
-        }).join('');
-
-        return '<tr style="background:#2E5339;color:#fff;">' +
-          '<td colspan="8" style="padding:8px 10px;font-weight:bold;font-size:13px;">' + cust + '</td></tr>' +
-          ordersHtml;
-      }).join('');
-
-      return '<div style="margin-bottom:20px;">' +
-        '<div style="background:#2E5339;color:#fff;padding:12px 16px;font-size:16px;font-weight:bold;border-radius:6px 6px 0 0;">' + wh + '</div>' +
-        '<table style="width:100%;border-collapse:collapse;font-size:10px;">' +
-        '<thead><tr style="background:#4A7C59;color:#fff;">' +
-        '<th style="padding:4px;text-align:left;">Ref</th>' +
-        '<th style="padding:4px;text-align:left;">Description</th>' +
-        '<th style="padding:4px;text-align:left;">Mark</th>' +
-        '<th style="padding:4px;text-align:left;">Container</th>' +
-        '<th style="padding:4px;text-align:left;">Cargo</th>' +
-        '<th style="padding:4px;text-align:left;">Receiver</th>' +
-        '<th style="padding:4px;text-align:left;">Bags</th>' +
-        '<th style="padding:4px;text-align:left;">Wt</th>' +
-        '</tr></thead><tbody>' +
-        customerHtml +
-        '</tbody></table></div>';
-    }).join('');
-
-    var html = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
-      '<title>CSS Field Report — ' + dateStr + '</title>' +
-      '<style>' +
-      'body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }' +
-      '.header { text-align: center; background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }' +
-      '.header h1 { font-size: 20px; color: #2E5339; margin: 0 0 4px 0; letter-spacing: 1px; }' +
-      '.header .tag { font-size: 10px; color: #888; font-style: italic; }' +
-      '.header .info { font-size: 12px; color: #666; margin-top: 6px; }' +
-      '@media print { body { background: #fff; margin: 0; } .header { box-shadow: none; border: 1px solid #ccc; } }' +
-      '</style></head><body>' +
-      '<div class="header">' +
-      '<h1>COMMODITY SAMPLER SERVICES</h1>' +
-      '<div class="tag">"Integrity Through Independence"</div>' +
-      '<div class="info">🏭 Field Report &mdash; ' + dateStr + '</div>' +
-      '<div class="info">' + warehouseNames.length + ' warehouses &middot; ' + grandTotal + ' active samples</div>' +
-      '<div class="info" style="color:#c0392b;font-size:10px;margin-top:8px;">⚡ Offline snapshot — data as of ' +
-      today.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + '</div>' +
-      '</div>' +
-      sections +
-      '<div style="text-align:center;color:#999;font-size:9px;margin-top:20px;">Generated by CSS System | ' + dateStr + '</div>' +
-      '</body></html>';
-
-    return { success: true, html: html };
-  } catch (e) {
-    return { success: false, message: 'Error generating offline report: ' + e.message };
-  }
-}
+// generateOfflineFieldReport() — moved to fieldreportoffline.js to avoid duplicates
 
 // ============================================================
 // FIELD REPORT — DISPLAY (generateFieldReport)

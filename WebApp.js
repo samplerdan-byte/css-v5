@@ -9,7 +9,42 @@
 
 function doGet(e) {
   var page = (e && e.parameter && e.parameter.page) ? e.parameter.page : 'main';
-  
+  var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : '';
+
+  // Remote action triggers (called via URL) — require token auth
+  if (action === 'import' || action === 'refresh' || action === 'process') {
+    var actionToken = (e && e.parameter && e.parameter.token) ? e.parameter.token : '';
+    var expectedToken = PropertiesService.getScriptProperties().getProperty('WEBAPP_ACTION_TOKEN');
+    if (!expectedToken || actionToken !== expectedToken) {
+      return ContentService.createTextOutput('Unauthorized — invalid or missing token')
+        .setMimeType(ContentService.MimeType.TEXT);
+    }
+  }
+  if (action === 'import') {
+    // Clear old state and create trigger for fresh historical import
+    _removeHistoricalTrigger();
+    var props = PropertiesService.getScriptProperties();
+    props.deleteProperty('hist_running');
+    props.deleteProperty('hist_queryIndex');
+    props.deleteProperty('hist_offset');
+    props.deleteProperty('hist_totalProcessed');
+    props.deleteProperty('hist_totalSkipped');
+    props.deleteProperty('hist_totalThreads');
+    ScriptApp.newTrigger('historicalImport').timeBased().after(5000).create();
+    return ContentService.createTextOutput('Historical import trigger created — starts in ~5 seconds')
+      .setMimeType(ContentService.MimeType.TEXT);
+  }
+  if (action === 'refresh') {
+    ScriptApp.newTrigger('fullRefresh').timeBased().after(5000).create();
+    return ContentService.createTextOutput('Full refresh trigger created — starts in ~5 seconds')
+      .setMimeType(ContentService.MimeType.TEXT);
+  }
+  if (action === 'process') {
+    ScriptApp.newTrigger('processPDFsFromGmail').timeBased().after(5000).create();
+    return ContentService.createTextOutput('Email processing trigger created — starts in ~5 seconds')
+      .setMimeType(ContentService.MimeType.TEXT);
+  }
+
   // Client Status Portal — token-based access
   if (page === 'portal') {
     return HtmlService.createTemplateFromFile('ClientPortal')
@@ -277,20 +312,24 @@ function webAppProcessPDF(base64Data, fileName) {
     // Extract text from PDF
     // Google Apps Script can create a temp file and use OCR via Drive
     var tempFile = DriveApp.createFile(blob);
-    
+    var docFile = null;
+    var text = '';
+
     // Convert PDF to Google Doc for text extraction
-    var docFile = Drive.Files.copy(
-      { title: 'CSS_Temp_Extract_' + fileName, mimeType: MimeType.GOOGLE_DOCS },
-      tempFile.getId(),
-      { ocr: true, ocrLanguage: 'en' }
-    );
-    
-    var doc = DocumentApp.openById(docFile.id);
-    var text = doc.getBody().getText();
-    
-    // Clean up temp files
-    DriveApp.getFileById(docFile.id).setTrashed(true);
-    tempFile.setTrashed(true);
+    try {
+      docFile = Drive.Files.copy(
+        { title: 'CSS_Temp_Extract_' + fileName, mimeType: MimeType.GOOGLE_DOCS },
+        tempFile.getId(),
+        { ocr: true, ocrLanguage: 'en' }
+      );
+
+      var doc = DocumentApp.openById(docFile.id);
+      text = doc.getBody().getText();
+    } finally {
+      // Clean up temp files even if extraction fails
+      try { if (docFile) DriveApp.getFileById(docFile.id).setTrashed(true); } catch(ignore) {}
+      try { tempFile.setTrashed(true); } catch(ignore) {}
+    }
     
     if (!text || text.trim().length === 0) {
       return { success: false, message: '⚠️ Could not extract text from PDF. Try manual entry.' };

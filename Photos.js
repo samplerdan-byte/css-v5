@@ -32,7 +32,9 @@ function webAppFindSamples(query) {
     }
     query = String(query).trim();
 
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = (typeof SPREADSHEET_ID !== 'undefined' && SPREADSHEET_ID)
+      ? SpreadsheetApp.openById(SPREADSHEET_ID)
+      : SpreadsheetApp.getActiveSpreadsheet();
     var mainName = (typeof CONFIG !== 'undefined' && CONFIG.mainSheetName) ? CONFIG.mainSheetName : 'All Orders';
     var completedName = (typeof CONFIG !== 'undefined' && CONFIG.completedOrdersSheetName) ? CONFIG.completedOrdersSheetName : 'Completed Orders';
     var sheets = [
@@ -64,8 +66,8 @@ function webAppFindSamples(query) {
           var cellVal = String(data[i][col[colName]] || '').trim();
           if (!cellVal) continue;
           var cellLower = cellVal.toLowerCase();
-          // Exact match OR cell contains query OR query contains cell
-          if (cellLower === queryLower || cellLower.indexOf(queryLower) !== -1 || queryLower.indexOf(cellLower) !== -1) {
+          // Exact match OR cell contains query
+          if (cellLower === queryLower || cellLower.indexOf(queryLower) !== -1) {
             hit = true;
             break;
           }

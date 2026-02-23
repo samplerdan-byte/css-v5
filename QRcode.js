@@ -205,18 +205,18 @@ function generateArrivalLabels() {
   var numRows = selection.getNumRows();
   if (startRow === 1) { ui.alert('Please select data rows (not header).'); return; }
 
-  var confirm = ui.alert(
+  var answer = ui.alert(
     'Generate ' + numRows + ' arrival label(s)?',
     ui.ButtonSet.YES_NO
   );
-  if (confirm !== ui.Button.YES) return;
+  if (answer !== ui.Button.YES) return;
 
   var col = _getColumnMap(sheet);
   var labels = [];
+  var allRows = sheet.getRange(startRow, 1, numRows, sheet.getLastColumn()).getValues();
 
   for (var i = 0; i < numRows; i++) {
-    var rowNum = startRow + i;
-    var row = sheet.getRange(rowNum, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var row = allRows[i];
 
     // Build QR data payload
     var qrDataStr = row[col['QR Data']] || '';
@@ -406,18 +406,18 @@ function generateArrivalLabelsVertical() {
   var numRows = selection.getNumRows();
   if (startRow === 1) { ui.alert('Please select data rows (not header).'); return; }
 
-  var confirm = ui.alert(
+  var answer = ui.alert(
     'Generate ' + numRows + ' vertical arrival label(s)?',
     ui.ButtonSet.YES_NO
   );
-  if (confirm !== ui.Button.YES) return;
+  if (answer !== ui.Button.YES) return;
 
   var col = _getColumnMap(sheet);
   var labels = [];
+  var allRows = sheet.getRange(startRow, 1, numRows, sheet.getLastColumn()).getValues();
 
   for (var i = 0; i < numRows; i++) {
-    var rowNum = startRow + i;
-    var row = sheet.getRange(rowNum, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var row = allRows[i];
 
     var qrDataStr = row[col['QR Data']] || '';
     if (!qrDataStr || qrDataStr === 'undefined' || qrDataStr.trim() === '') {
@@ -644,18 +644,18 @@ function generateKeurigLabels() {
   var numRows = selection.getNumRows();
   if (startRow === 1) { ui.alert('Please select data rows (not header).'); return; }
 
-  var confirm = ui.alert(
+  var answer = ui.alert(
     'Generate ' + numRows + ' Keurig-style label(s)?',
     ui.ButtonSet.YES_NO
   );
-  if (confirm !== ui.Button.YES) return;
+  if (answer !== ui.Button.YES) return;
 
   var col = _getColumnMap(sheet);
   var labels = [];
+  var allRows = sheet.getRange(startRow, 1, numRows, sheet.getLastColumn()).getValues();
 
   for (var i = 0; i < numRows; i++) {
-    var rowNum = startRow + i;
-    var row = sheet.getRange(rowNum, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var row = allRows[i];
 
     // ── QR data ──
     var qrDataStr = row[col['QR Data']] || '';
@@ -736,7 +736,7 @@ function generateKeurigLabels() {
     if (typeof getCountryFromICOMark === 'function') {
       country = getCountryFromICOMark(mark);
     }
-    country = country.toUpperCase();
+    country = (country || '').toUpperCase();
 
     // ── Certification from description ──
     var certification = _extractCertification(description);
@@ -746,7 +746,6 @@ function generateKeurigLabels() {
 
     // ── Weight ──
     var weight = row[col['Weight']] || '0.000';
-    if (weight === '' || weight === 0) weight = '0.000';
 
     // ── Other fields ──
     var pNumber      = String(row[col['P #']] || '');

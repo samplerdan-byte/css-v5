@@ -24,7 +24,7 @@
 var LEARN_CONFIG = {
   logSheetName: 'Extraction Log',
   rulesSheetName: 'Correction Rules',
-  minConfidence: 2,
+  minConfidence: 5,
   trackedFields: [
     'Sender', 'Receiver', 'Warehouse', 'Description',
     'Mark #', 'Container #', 'Cargo #', 'Bag Count',
@@ -343,7 +343,7 @@ function applyCorrections(sampleData, senderEmail) {
       if (!rulePattern) continue;
 
       var senderLower = senderPattern.toLowerCase();
-      if (senderLower.indexOf(rulePattern) === -1 && rulePattern.indexOf(senderLower) === -1) continue;
+      if (senderLower !== rulePattern) continue;  // exact match — prevents cross-client leakage
 
       applicableRules.push({
         field: String(rulesData[i][2]).trim(),

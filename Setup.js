@@ -14,7 +14,7 @@ function setupSheet() {
     'Comments', 'Source Email', 'QR Data',
     'Status', 'Scanned Date', 'Scanned By', 'Shipped Date', 'Tracking Number', 'Report Date', 'Report Sent To',
     'Email Link', 'Attachments', 'Photos', 'Container Status', 'Container ETA',
-    'Sample Type', 'Shipping Line', 'Shipping Notes'
+    'Sample Type', 'Shipping Line', 'Shipping Notes', 'B/L #', 'Ship Status'
   ];
   mainSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   mainSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
@@ -214,7 +214,7 @@ function setupConditionalFormatting() {
   var lastCol = sheet.getLastColumn();
   var dataRange = sheet.getRange(2, 1, lastRow - 1, lastCol);
 
-  var colLetter = String.fromCharCode(65 + reviewCol);
+  var colLetter = _colToLetter(reviewCol);
 
   sheet.clearConditionalFormatRules();
 
@@ -229,7 +229,7 @@ function setupConditionalFormatting() {
 
   var statusCol = col['Status'];
   if (statusCol !== undefined) {
-    var statusLetter = String.fromCharCode(65 + statusCol);
+    var statusLetter = _colToLetter(statusCol);
     var greenRule = SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=$' + statusLetter + '2="Completed"')
       .setBackground('#d4edda')
@@ -252,7 +252,7 @@ function setupFieldColumns() {
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var lastCol = headers.length;
 
-  var newCols = ['Sample Type', 'Shipping Line', 'Shipping Notes'];
+  var newCols = ['Sample Type', 'Shipping Line', 'Shipping Notes', 'B/L #', 'Ship Status'];
   var added = [];
   newCols.forEach(function(colName) {
     if (headers.indexOf(colName) === -1) {
@@ -289,9 +289,17 @@ function setupFieldColumns() {
     sheet.getRange(2, csIdx + 1, lastRow - 1, 1).setDataValidation(csRule);
   }
 
+  var ssIdx = headers.indexOf('Ship Status');
+  if (ssIdx !== -1 && lastRow > 1) {
+    var ssRule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['Afloat', 'Landed', 'Discharged', 'At Warehouse', 'In Transit', 'Customs Hold', 'Released'], true)
+      .setAllowInvalid(true).build();
+    sheet.getRange(2, ssIdx + 1, lastRow - 1, 1).setDataValidation(ssRule);
+  }
+
   ui.alert('✅ Field Report columns ready!\n\n' +
     (added.length > 0 ? 'Added: ' + added.join(', ') + '\n' : 'All columns already exist.\n') +
-    'Dropdowns set for: Sample Type, Shipping Line, Container Status\n' +
+    'Dropdowns set for: Sample Type, Shipping Line, Container Status, Ship Status\n' +
     'Tip: Dropdowns allow custom values — just type to add new options.');
 }
 
@@ -334,6 +342,7 @@ function setupFieldReportEditors() {
       var notesIdx = headers.indexOf('Notes');
       if (notesIdx === -1) notesIdx = headers.length;
       sheet.insertColumnAfter(notesIdx);
+      if (typeof _clearColumnMapCache === 'function') _clearColumnMapCache();
       sheet.getRange(1, notesIdx + 1).setValue('Allowed Columns').setFontWeight('bold').setBackground('#2E5339').setFontColor('#fff');
       sheet.setColumnWidth(notesIdx + 1, 400);
       var lastRow = sheet.getLastRow();
@@ -447,7 +456,7 @@ function lockAllHeadersWithAlert() {
 
 function unlockHeaders() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheetNames = ['ALL Orders', 'Live Orders', 'Completed Orders', 'Scan Log'];
+  var sheetNames = ['All Orders', 'Live Orders', 'Completed Orders', 'Scan Log'];
   var unlocked = [];
 
   sheetNames.forEach(function(name) {
@@ -512,6 +521,7 @@ function syncPrintColumnToAllSheets() {
     if (existingPrintIdx === -1) {
       if (sheet.getLastColumn() >= printColNum) {
         sheet.insertColumnBefore(printColNum);
+        if (typeof _clearColumnMapCache === 'function') _clearColumnMapCache();
       }
       sheet.getRange(1, printColNum).setValue('Print');
       sheet.getRange(1, printColNum).setFontWeight('bold');
@@ -538,4 +548,101 @@ function syncPrintColumnToAllSheets() {
   });
 
   ui.alert('Print Column Sync Complete!\n\n• ' + synced.join('\n• '));
+}
+
+// ============================================================
+// SETUP EVERYTHING — One-click full system setup
+// ============================================================
+
+function setupEverything() {
+  var ui = SpreadsheetApp.getUi();
+  var log = [];
+
+  ui.alert('🚀 Full System Setup',
+    'This will set up the entire CSS system:\n\n' +
+    '1. Main sheet + all columns\n' +
+    '2. Tracking system (Scan Log, Live Orders, Completed)\n' +
+    '3. Field columns + dropdowns\n' +
+    '4. Conditional formatting\n' +
+    '5. Print checkboxes\n' +
+    '6. Header protection\n' +
+    '7. Customer email sheet\n' +
+    '8. Warehouse email sheet\n' +
+    '9. Field report editors\n' +
+    '10. Contacts sheet\n' +
+    '11. Time triggers\n\n' +
+    'Click OK to begin.', ui.ButtonSet.OK_CANCEL);
+
+  // 1. Main sheet + headers
+  try {
+    setupSheet();
+    log.push('✅ Main sheet + columns');
+  } catch(e) { log.push('❌ Main sheet: ' + e.message); }
+
+  // 2. Tracking system
+  try {
+    setupTrackingSystem();
+    log.push('✅ Tracking system (Scan Log, Live Orders, Completed)');
+  } catch(e) { log.push('❌ Tracking system: ' + e.message); }
+
+  // 3. Field columns + dropdowns
+  try {
+    setupFieldColumns();
+    log.push('✅ Field columns + dropdowns');
+  } catch(e) { log.push('❌ Field columns: ' + e.message); }
+
+  // 4. Conditional formatting
+  try {
+    setupConditionalFormatting();
+    log.push('✅ Conditional formatting');
+  } catch(e) { log.push('❌ Conditional formatting: ' + e.message); }
+
+  // 5. Print checkboxes
+  try {
+    if (typeof addPrintCheckboxColumn === 'function') {
+      addPrintCheckboxColumn();
+      log.push('✅ Print checkboxes');
+    }
+  } catch(e) { log.push('❌ Print checkboxes: ' + e.message); }
+
+  // 6. Header protection
+  try {
+    var locked = lockAllHeaders();
+    log.push('✅ Headers locked (' + (locked ? locked.length : 0) + ' sheets)');
+  } catch(e) { log.push('❌ Header lock: ' + e.message); }
+
+  // 7. Customer email sheet
+  try {
+    setupCustomerEmailSheet();
+    log.push('✅ Customer email sheet');
+  } catch(e) { log.push('❌ Customer emails: ' + e.message); }
+
+  // 8. Warehouse email sheet
+  try {
+    setupWarehouseEmails();
+    log.push('✅ Warehouse email sheet');
+  } catch(e) { log.push('❌ Warehouse emails: ' + e.message); }
+
+  // 9. Field report editors
+  try {
+    setupFieldReportEditors();
+    log.push('✅ Field report editors');
+  } catch(e) { log.push('❌ Field report editors: ' + e.message); }
+
+  // 10. Contacts
+  try {
+    if (typeof setupContacts === 'function') {
+      setupContacts();
+      log.push('✅ Contacts sheet');
+    }
+  } catch(e) { log.push('❌ Contacts: ' + e.message); }
+
+  // 11. Time triggers
+  try {
+    createTimeTriggers();
+    log.push('✅ Time triggers');
+  } catch(e) { log.push('❌ Triggers: ' + e.message); }
+
+  // Final report
+  ui.alert('🎉 Setup Complete!\n\n' + log.join('\n'));
 }

@@ -30,7 +30,12 @@ function getAllSamplesForOrder(csOrderNum) {
     timestamp: '',
     sampleOrderNum: '',
     attachments: '',
-    sourceEmail: ''
+    sourceEmail: '',
+    bol: '',
+    shipStatus: '',
+    shippingLine: '',
+    containerETA: '',
+    shippingNotes: ''
   };
   
   sheetsToSearch.forEach(function(sheetName) {
@@ -86,6 +91,21 @@ function getAllSamplesForOrder(csOrderNum) {
         }
         if (!orderInfo.sourceEmail && col['Source Email'] !== undefined) {
           orderInfo.sourceEmail = data[i][col['Source Email']] || '';
+        }
+        if (!orderInfo.bol && col['B/L #'] !== undefined) {
+          orderInfo.bol = data[i][col['B/L #']] || '';
+        }
+        if (!orderInfo.shipStatus && col['Ship Status'] !== undefined) {
+          orderInfo.shipStatus = data[i][col['Ship Status']] || '';
+        }
+        if (!orderInfo.shippingLine && col['Shipping Line'] !== undefined) {
+          orderInfo.shippingLine = data[i][col['Shipping Line']] || '';
+        }
+        if (!orderInfo.containerETA && col['Container ETA'] !== undefined) {
+          orderInfo.containerETA = data[i][col['Container ETA']] || '';
+        }
+        if (!orderInfo.shippingNotes && col['Shipping Notes'] !== undefined) {
+          orderInfo.shippingNotes = data[i][col['Shipping Notes']] || '';
         }
       }
     }
@@ -365,7 +385,14 @@ function generateAllCoverSheetsHtmlFull(orders) {
     '.email-body { padding: 16px; font-size: 15pt; line-height: 1.5; overflow: hidden; word-wrap: break-word; } ' +
     '.email-body img { max-width: 100%; height: auto; } .email-body table { font-size: inherit; } ' +
     '.no-email-note { text-align: center; padding: 10px 16px; margin: 10px auto 20px; max-width: 750px; background: #fff3cd; color: #856404; border: 1px solid #ffc107; border-radius: 5px; font-size: 15pt; font-style: italic; } ' +
-    '@media print { .controls { display: none; } body { background: white; padding: 0; } .cover-sheet { border: 1px solid #000; margin: 0; page-break-inside: avoid; } .email-page { border: 1px solid #000; margin: 0; page-break-inside: avoid; } .page-break { height: 0; border: none; margin: 0; } .no-email-note { page-break-inside: avoid; } }' +
+    '.shipping-detail-row { display: grid; grid-template-columns: 1fr 2fr 1fr 1fr 1fr; gap: 8px; background: #e3f2fd; border: 2px solid #1976d2; border-radius: 5px; padding: 8px 12px; margin-bottom: 12px; align-items: start; } ' +
+    '.ship-field .info-label { font-size: 9pt; } ' +
+    '.ship-field .info-value { font-size: 13pt; } ' +
+    '.ship-field-note { min-width: 0; } ' +
+    '.ship-note-input { width: 100%; border: 1px solid #90caf9; border-radius: 3px; padding: 3px 6px; font-size: 11pt; font-family: Arial, sans-serif; background: #fff; } ' +
+    '.ship-select { width: 100%; border: 1px solid #90caf9; border-radius: 3px; padding: 3px 4px; font-size: 11pt; font-family: Arial, sans-serif; background: #fff; } ' +
+    '.carrier-select { padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; font-size: 8pt; } ' +
+    '@media print { .controls { display: none; } body { background: white; padding: 0; } .cover-sheet { border: 1px solid #000; margin: 0; page-break-inside: avoid; } .email-page { border: 1px solid #000; margin: 0; page-break-inside: avoid; } .page-break { height: 0; border: none; margin: 0; } .no-email-note { page-break-inside: avoid; } .carrier-select, .ship-select { border: none; background: transparent; -webkit-appearance: none; -moz-appearance: none; font-weight: bold; padding: 0; } .ship-note-input { border: none; background: transparent; padding: 0; font-weight: bold; } .shipping-detail-row { border: 1px solid #000; background: #f0f0f0; } }' +
     '</style></head><body>' +
     '<div class="controls">' +
     '<div class="summary">📋 ' + orderKeys.length + ' Cover Sheets Ready (With Original Emails)</div>' +
@@ -374,11 +401,94 @@ function generateAllCoverSheetsHtmlFull(orders) {
     '</div>' +
     pages +
     '<script>function onMarked(result) { alert(result); google.script.host.close(); }\n' +
+    'function _shipSave(el){var row=el.closest(".shipping-detail-row");var ord=row.getAttribute("data-order");var field=el.getAttribute("data-field");var val=el.value||"";el.style.outline="2px solid #ffc107";google.script.run.withSuccessHandler(function(){el.style.outline="2px solid #28a745";setTimeout(function(){el.style.outline="";},1200);}).withFailureHandler(function(e){el.style.outline="2px solid #dc3545";alert("Save failed: "+e);}).updateCoverSheetField(ord,field,val);}\n' +
+    'document.addEventListener("change",function(e){var t=e.target;if(t.classList.contains("ship-select")||t.classList.contains("ship-note-input")){_shipSave(t);}});\n' +
+    'document.addEventListener("blur",function(e){var t=e.target;if(t.classList.contains("ship-note-input")){_shipSave(t);}},true);\n' +
     _getBarcodeScript() +
     '</script>' +
     '</body></html>';
   
   return html;
+}
+
+// ============================================================
+// HELPER: Build shipping info bar HTML
+// ============================================================
+
+function _buildShippingInfoBar(order) {
+  // Shipping Line dropdown
+  var shipLines = ['', 'MSC', 'ZIM', 'HAPAG-LLOYD', 'MAERSK', 'SEABOARD MARINE', 'ONE', 'CMA-CGM', 'EVERGREEN', 'COSCO'];
+  var shipLineOptions = shipLines.map(function(sl) {
+    var sel = (order.shippingLine && order.shippingLine.toUpperCase() === sl.toUpperCase()) ? ' selected' : '';
+    return '<option value="' + sl + '"' + sel + '>' + (sl || '--') + '</option>';
+  }).join('');
+
+  // Vessel Status dropdown
+  var statuses = ['', 'Afloat', 'Landed', 'Discharged', 'At Warehouse', 'In Transit', 'Customs Hold', 'Released'];
+  var statusOptions = statuses.map(function(st) {
+    var sel = (order.shipStatus && order.shipStatus.toLowerCase() === st.toLowerCase()) ? ' selected' : '';
+    return '<option value="' + st + '"' + sel + '>' + (st || '--') + '</option>';
+  }).join('');
+
+  var oid = (order.csOrder || '').replace(/"/g, '&quot;');
+
+  return '<div class="shipping-detail-row" data-order="' + oid + '">' +
+    '<div class="ship-field"><div class="info-label">B/L</div><div class="info-value">' + (order.bol || '-') + '</div></div>' +
+    '<div class="ship-field ship-field-note"><div class="info-label">Note</div>' +
+      '<input type="text" class="ship-note-input" data-field="Shipping Notes" value="' + (order.shippingNotes || '').replace(/"/g, '&quot;') + '" placeholder="Add note...">' +
+    '</div>' +
+    '<div class="ship-field"><div class="info-label">Ship Line</div>' +
+      '<select class="ship-select" data-field="Shipping Line">' + shipLineOptions + '</select>' +
+    '</div>' +
+    '<div class="ship-field"><div class="info-label">Status</div>' +
+      '<select class="ship-select" data-field="Ship Status">' + statusOptions + '</select>' +
+    '</div>' +
+    '<div class="ship-field"><div class="info-label">ETA</div><div class="info-value">' + (order.containerETA || '-') + '</div></div>' +
+    '</div>';
+}
+
+// ============================================================
+// UPDATE SHIPPING FIELD FROM COVER SHEET
+// Called via google.script.run from cover sheet dropdowns/inputs
+// ============================================================
+
+function updateCoverSheetField(csOrderNum, fieldName, value) {
+  var allowed = ['Shipping Notes', 'Shipping Line', 'Ship Status'];
+  if (allowed.indexOf(fieldName) === -1) {
+    throw new Error('Field not allowed: ' + fieldName);
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetsToUpdate = [
+    (typeof CONFIG !== 'undefined' && CONFIG.mainSheetName) ? CONFIG.mainSheetName : 'All Orders',
+    'Completed Orders'
+  ];
+
+  var updated = 0;
+
+  sheetsToUpdate.forEach(function(sheetName) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet || sheet.getLastRow() < 2) return;
+
+    var col = _getColumnMap(sheet);
+    if (col['CS Order #'] === undefined || col[fieldName] === undefined) return;
+
+    var orderColIdx = col['CS Order #'];
+    var fieldColIdx = col[fieldName];
+    var data = sheet.getRange(2, orderColIdx + 1, sheet.getLastRow() - 1, 1).getValues();
+
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][0]).trim() === String(csOrderNum).trim()) {
+        sheet.getRange(i + 2, fieldColIdx + 1).setValue(value);
+        updated++;
+      }
+    }
+  });
+
+  if (updated === 0) {
+    throw new Error('Order ' + csOrderNum + ' not found');
+  }
+  return updated + ' row(s) updated';
 }
 
 // ============================================================
@@ -394,7 +504,7 @@ function generateSingleCoverSheetHtmlFull(order, samples) {
       statusCounts.live++;
     }
   });
-  
+
   var receiverGroups = {};
   var receiverOrder = [];
   samples.forEach(function(s) {
@@ -405,10 +515,10 @@ function generateSingleCoverSheetHtmlFull(order, samples) {
     }
     receiverGroups[recv].samples.push(s);
   });
-  
+
   var receiverGroupsHtml = receiverOrder.map(function(recv) {
     var group = receiverGroups[recv];
-    
+
     var carrier = null;
     try { carrier = lookupCarrierByCompany(recv); } catch(e) {}
     var carrierLine = '';
@@ -418,9 +528,18 @@ function generateSingleCoverSheetHtmlFull(order, samples) {
       if (carrier.ups) parts.push('UPS: ' + carrier.ups + (carrier.preferred === 'UPS' ? ' ★' : ''));
       carrierLine = '<div style="font-size:13.5pt;color:#cde;margin-top:4px;">📋 ' + parts.join(' &nbsp;|&nbsp; ') + '</div>';
     }
-    
+
+    // Build carrier dropdown options
+    var carrierOptions = '<option value="">--</option>';
+    if (carrier) {
+      if (carrier.fedex) carrierOptions += '<option value="FedEx"' + (carrier.preferred === 'FedEx' ? ' selected' : '') + '>FedEx</option>';
+      if (carrier.ups) carrierOptions += '<option value="UPS"' + (carrier.preferred === 'UPS' ? ' selected' : '') + '>UPS</option>';
+    } else {
+      carrierOptions += '<option value="FedEx">FedEx</option><option value="UPS">UPS</option>';
+    }
+    carrierOptions += '<option value="USPS">USPS</option><option value="Pickup">Pickup</option>';
+
     var rows = group.samples.map(function(s) {
-      var statusClass = 'status-' + (s.status || 'received').toLowerCase();
       var sourceBadge = '';
       if (s.source === 'Completed Orders') {
         sourceBadge = '<span class="source-badge source-completed">✓</span>';
@@ -433,10 +552,10 @@ function generateSingleCoverSheetHtmlFull(order, samples) {
         '<td>' + (s.description || '-') + '</td>' +
         '<td>' + (s.bagCount || '-') + '</td>' +
         '<td>' + (s.sampleWeight || '-') + '</td>' +
-        '<td><span class="status-badge ' + statusClass + '">' + (s.status || 'Received') + '</span></td>' +
+        '<td><select class="carrier-select">' + carrierOptions + '</select></td>' +
         '</tr>';
     }).join('');
-    
+
     return '<div class="receiver-group">' +
       '<div class="receiver-header">' +
       '<span class="ship-icon">📦</span> Ship To: ' + recv +
@@ -444,10 +563,12 @@ function generateSingleCoverSheetHtmlFull(order, samples) {
       carrierLine +
       '</div>' +
       '<table><thead><tr>' +
-      '<th>CS Sample #</th><th>Container</th><th>Cargo</th><th>Mark</th><th>Description</th><th>Bags</th><th>Weight</th><th>Status</th>' +
+      '<th>CS Sample #</th><th>Container</th><th>Cargo</th><th>Mark</th><th>Description</th><th>Bags</th><th>Weight</th><th>Carrier</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }).join('');
-  
+
+  var shippingBar = _buildShippingInfoBar(order);
+
   return '<div class="cover-sheet">' +
     '<div class="header"><p class="company-name">COMMODITY SAMPLER SERVICES</p><p class="tagline">"Integrity Through Independence"</p></div>' +
     '<div class="order-header">' +
@@ -465,6 +586,7 @@ function generateSingleCoverSheetHtmlFull(order, samples) {
     '<div class="info-box"><div class="info-label">Warehouse</div><div class="info-value">' + (order.warehouse || '-') + '</div></div>' +
     '<div class="info-box"><div class="info-label">Order #</div><div class="info-value">' + (order.sampleOrderNum || '-') + '</div></div>' +
     '</div>' +
+    shippingBar +
     receiverGroupsHtml +
     '<div class="timestamp">Created: ' + order.timestamp + '</div></div>';
 }
@@ -599,7 +721,12 @@ function generateOrderDetailsHtml(order, samples) {
     '.print-btn { background: #4A7C59; color: white; } .close-btn { background: #6c757d; color: white; } ' +
     '.btn-row { text-align: center; margin-top: 15px; padding-top: 12px; border-top: 1px solid #ddd; } ' +
     '.timestamp { text-align: center; font-size: 12pt; color: #999; margin-top: 10px; } ' +
-    '@media print { body { background: white; padding: 0; } .btn-row, .email-section, .attachments-section { display: none; } .cover-sheet { border: 1px solid #000; } table { font-size: 12pt; } }' +
+    '.shipping-detail-row { display: grid; grid-template-columns: 1fr 2fr 1fr 1fr 1fr; gap: 8px; background: #e3f2fd; border: 2px solid #1976d2; border-radius: 5px; padding: 8px 12px; margin-bottom: 15px; align-items: start; } ' +
+    '.ship-field .info-label { font-size: 9pt; } .ship-field .info-value { font-size: 13pt; } ' +
+    '.ship-field-note { min-width: 0; } ' +
+    '.ship-note-input { width: 100%; border: 1px solid #90caf9; border-radius: 3px; padding: 3px 6px; font-size: 11pt; font-family: Arial, sans-serif; background: #fff; } ' +
+    '.ship-select { width: 100%; border: 1px solid #90caf9; border-radius: 3px; padding: 3px 4px; font-size: 11pt; font-family: Arial, sans-serif; background: #fff; } ' +
+    '@media print { body { background: white; padding: 0; } .btn-row, .email-section, .attachments-section { display: none; } .cover-sheet { border: 1px solid #000; } table { font-size: 12pt; } .ship-select { border: none; background: transparent; -webkit-appearance: none; -moz-appearance: none; font-weight: bold; padding: 0; } .ship-note-input { border: none; background: transparent; padding: 0; font-weight: bold; } .shipping-detail-row { border: 1px solid #000; background: #f0f0f0; } }' +
     '</style></head><body>' +
     '<div class="cover-sheet">' +
     '<div class="header"><p class="company-name">COMMODITY SAMPLER SERVICES</p><p class="tagline">"Integrity Through Independence"</p></div>' +
@@ -619,15 +746,20 @@ function generateOrderDetailsHtml(order, samples) {
     '<div class="info-box"><div class="info-label">Warehouse</div><div class="info-value">' + (order.warehouse || '-') + '</div></div>' +
     '<div class="info-box"><div class="info-label">Order # / Reference</div><div class="info-value">' + (order.sampleOrderNum || '-') + '</div></div>' +
     '</div>' +
+    _buildShippingInfoBar(order) +
     receiverGroupsHtml +
     '<div class="timestamp">Order Date: ' + order.timestamp + ' | Source: ' + (order.sourceEmail || 'N/A') + '</div>' +
     '<div class="btn-row">' +
     '<button class="btn print-btn" onclick="window.print()">🖨️ Print Cover Sheet</button>' +
     '<button class="btn close-btn" onclick="google.script.host.close()">Close</button>' +
     '</div></div>' +
-    '<script>' + _getBarcodeScript() + '</script>' +
+    '<script>' +
+    'function _shipSave(el){var row=el.closest(".shipping-detail-row");var ord=row.getAttribute("data-order");var field=el.getAttribute("data-field");var val=el.value||"";el.style.outline="2px solid #ffc107";google.script.run.withSuccessHandler(function(){el.style.outline="2px solid #28a745";setTimeout(function(){el.style.outline="";},1200);}).withFailureHandler(function(e){el.style.outline="2px solid #dc3545";alert("Save failed: "+e);}).updateCoverSheetField(ord,field,val);}\n' +
+    'document.addEventListener("change",function(e){var t=e.target;if(t.classList.contains("ship-select")||t.classList.contains("ship-note-input")){_shipSave(t);}});\n' +
+    'document.addEventListener("blur",function(e){var t=e.target;if(t.classList.contains("ship-note-input")){_shipSave(t);}},true);\n' +
+    _getBarcodeScript() + '</script>' +
     '</body></html>';
-  
+
   return html;
 }
 
@@ -703,73 +835,113 @@ function clearCoverSheetPrintedFlags() {
 // ============================================================
 
 function updateLiveOrdersView() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
-  const liveSheet = ss.getSheetByName(CONFIG.liveOrdersSheetName);
-  
-  if (!mainSheet || !liveSheet) return;
-  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
+  if (!mainSheet) return;
+
   var col = _getColumnMap(mainSheet);
   var statusIdx = col['Status'];
   var totalCols = mainSheet.getLastColumn();
-  
-  const lastRow = mainSheet.getLastRow();
+  var headers = mainSheet.getRange(1, 1, 1, totalCols).getValues();
+
+  // Auto-create Live Orders if missing
+  var liveSheet = ss.getSheetByName(CONFIG.liveOrdersSheetName || 'Live Orders');
+  if (!liveSheet) {
+    liveSheet = ss.insertSheet(CONFIG.liveOrdersSheetName || 'Live Orders');
+    liveSheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
+    liveSheet.getRange(1, 1, 1, headers[0].length).setFontWeight('bold').setBackground('#d9ead3');
+    liveSheet.setFrozenRows(1);
+    try { liveSheet.getRange(1, 1, 1, headers[0].length).createFilter(); } catch(e) {}
+    Logger.log('Created Live Orders sheet');
+  }
+
+  // Auto-create Completed Orders if missing
+  var completedSheet = ss.getSheetByName(CONFIG.completedOrdersSheetName || 'Completed Orders');
+  if (!completedSheet) {
+    completedSheet = ss.insertSheet(CONFIG.completedOrdersSheetName || 'Completed Orders');
+    completedSheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
+    completedSheet.getRange(1, 1, 1, headers[0].length).setFontWeight('bold').setBackground('#f4cccc');
+    completedSheet.setFrozenRows(1);
+    try { completedSheet.getRange(1, 1, 1, headers[0].length).createFilter(); } catch(e) {}
+    Logger.log('Created Completed Orders sheet');
+  }
+
+  var lastRow = mainSheet.getLastRow();
   var liveRows = [];
-  
+  var completedRows = [];
+
   if (lastRow >= 2) {
-    const data = mainSheet.getRange(2, 1, lastRow - 1, totalCols).getValues();
-    const formulas = mainSheet.getRange(2, 1, lastRow - 1, totalCols).getFormulas();
-    
-    const liveStatuses = [CONFIG.statusValues.RECEIVED, CONFIG.statusValues.SCANNED];
-    
+    var data = mainSheet.getRange(2, 1, lastRow - 1, totalCols).getValues();
+    var formulas = mainSheet.getRange(2, 1, lastRow - 1, totalCols).getFormulas();
+
+    var liveStatuses = [CONFIG.statusValues.RECEIVED, CONFIG.statusValues.SCANNED];
+    var completedStatuses = [CONFIG.statusValues.SHIPPED, 'Completed', CONFIG.statusValues.REPORTED, CONFIG.statusValues.ARCHIVED];
+
     for (var i = 0; i < data.length; i++) {
-      var status = data[i][statusIdx];
-      if (liveStatuses.includes(status)) {
-        var rowData = data[i].slice();
-        for (var j = 0; j < formulas[i].length; j++) {
-          if (formulas[i][j]) {
-            rowData[j] = formulas[i][j];
-          }
-        }
-        liveRows.push({ data: rowData, rowNum: i + 2 });
+      var status = String(data[i][statusIdx] || '').trim();
+      var rowData = data[i].slice();
+      for (var j = 0; j < formulas[i].length; j++) {
+        if (formulas[i][j]) rowData[j] = formulas[i][j];
+      }
+
+      if (liveStatuses.indexOf(status) !== -1) {
+        liveRows.push(rowData);
+      } else if (completedStatuses.indexOf(status) !== -1) {
+        completedRows.push(rowData);
+      } else if (status === '') {
+        // No status = treat as Received (live)
+        liveRows.push(rowData);
       }
     }
   }
-  
+
+  // Populate Live Orders
   if (liveSheet.getLastRow() > 1) {
-    liveSheet.getRange(2, 1, liveSheet.getLastRow() - 1, liveSheet.getLastColumn()).clear();
+    liveSheet.getRange(2, 1, liveSheet.getLastRow() - 1, liveSheet.getLastColumn() || totalCols).clear();
   }
   if (liveRows.length > 0) {
-    var liveData = liveRows.map(function(r) { return r.data; });
-    liveSheet.getRange(2, 1, liveData.length, totalCols).setValues(liveData);
-    
+    liveSheet.getRange(2, 1, liveRows.length, totalCols).setValues(liveRows);
     var printIdx = col['Print'];
     if (printIdx !== undefined) {
-      liveSheet.getRange(2, printIdx + 1, liveData.length, 1).insertCheckboxes();
+      liveSheet.getRange(2, printIdx + 1, liveRows.length, 1).insertCheckboxes();
     }
   }
-  
+  Logger.log('Live Orders updated: ' + liveRows.length + ' active samples');
+
+  // Populate Completed Orders
+  if (completedSheet.getLastRow() > 1) {
+    completedSheet.getRange(2, 1, completedSheet.getLastRow() - 1, completedSheet.getLastColumn() || totalCols).clear();
+  }
+  if (completedRows.length > 0) {
+    completedSheet.getRange(2, 1, completedRows.length, totalCols).setValues(completedRows);
+  }
+  Logger.log('Completed Orders updated: ' + completedRows.length + ' completed samples');
+
+  // Update user view sheets
   var userSheets = ['View - Danboy1217'];
   userSheets.forEach(function(sheetName) {
     var userSheet = ss.getSheetByName(sheetName);
     if (userSheet) {
+      // Ensure headers exist
+      if (userSheet.getLastColumn() < totalCols || String(userSheet.getRange(1, 1).getValue()).trim() === '') {
+        userSheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
+        userSheet.getRange(1, 1, 1, headers[0].length).setFontWeight('bold').setFontColor('#000000').setBackground('#d9ead3');
+        userSheet.setFrozenRows(1);
+        try { userSheet.getRange(1, 1, 1, headers[0].length).createFilter(); } catch(e) {}
+      }
       if (userSheet.getLastRow() > 1) {
-        userSheet.getRange(2, 1, userSheet.getLastRow() - 1, userSheet.getLastColumn()).clear();
+        userSheet.getRange(2, 1, userSheet.getLastRow() - 1, userSheet.getLastColumn() || totalCols).clear();
       }
       if (liveRows.length > 0) {
-        var liveData = liveRows.map(function(r) { return r.data; });
-        userSheet.getRange(2, 1, liveData.length, totalCols).setValues(liveData);
-        
-        var printIdx = col['Print'];
-        if (printIdx !== undefined) {
-          userSheet.getRange(2, printIdx + 1, liveData.length, 1).insertCheckboxes();
+        userSheet.getRange(2, 1, liveRows.length, totalCols).setValues(liveRows);
+        var printIdx2 = col['Print'];
+        if (printIdx2 !== undefined) {
+          userSheet.getRange(2, printIdx2 + 1, liveRows.length, 1).insertCheckboxes();
         }
       }
       Logger.log('User sheet "' + sheetName + '" updated: ' + liveRows.length + ' rows');
     }
   });
-  
-  Logger.log('Live Orders updated: ' + liveRows.length + ' active samples');
 }
 
 // ============================================================
@@ -1027,17 +1199,30 @@ function processPendingMoves() {
   
   if (shippedSamples.length === 0) return { moved: 0, message: 'No shipped samples to move' };
   
-  // Batch copy to Completed
-  var rowsToAppend = shippedSamples.map(function(s) { return s.rowData; });
+  // Batch copy to Completed — update status from Shipped → Completed
+  var rowsToAppend = shippedSamples.map(function(s) {
+    var row = s.rowData.slice();
+    if (statusIdx !== undefined) row[statusIdx] = 'Completed';
+    return row;
+  });
   var newStartRow = completedSheet.getLastRow() + 1;
   completedSheet.getRange(newStartRow, 1, rowsToAppend.length, mainLastCol).setValues(rowsToAppend);
-  
+
   if (printIdx !== undefined) {
     completedSheet.getRange(newStartRow, printIdx + 1, rowsToAppend.length, 1).insertCheckboxes();
   }
-  
+
   SpreadsheetApp.flush();
-  
+
+  // Auto-bill the completed samples
+  try {
+    if (typeof _autoBillSamples === 'function') {
+      _autoBillSamples(rowsToAppend, ss);
+    }
+  } catch (e) {
+    Logger.log('Auto-billing skipped: ' + e);
+  }
+
   // Build set of sample #s to delete
   var toDelete = {};
   for (var j = 0; j < shippedSamples.length; j++) {
@@ -1396,6 +1581,8 @@ function getNextSampleInOrder(orderNum) {
 
 function addDataToSheet(sheet, data, options) {
   options = options || {};
+  var lock = LockService.getScriptLock();
+  var lockAcquired = false;
 
   try {
     Logger.log('=== addDataToSheet called ===');
@@ -1416,6 +1603,29 @@ function addDataToSheet(sheet, data, options) {
     if (data._orderGroupKey) {
       groupingData.sampleOrderNum = data._orderGroupKey;
       delete data._orderGroupKey;
+    }
+
+    // --- CRITICAL SECTION: lock to prevent duplicate order/sample numbers ---
+    if (!lock.tryLock(15000)) {
+      throw new Error('System busy — could not acquire write lock. Try again.');
+    }
+    lockAcquired = true;
+
+    // If using cache, verify it hasn't gone stale from a concurrent writer
+    if (options.orderCache) {
+      var _col = _getColumnMap(sheet);
+      var _lastRow = sheet.getLastRow();
+      if (_lastRow > 1) {
+        var _checkRows = Math.min(10, _lastRow - 1);
+        var _recent = sheet.getRange(_lastRow - _checkRows + 1, _col['CS Order #'] + 1, _checkRows, 1).getValues();
+        for (var _r = 0; _r < _recent.length; _r++) {
+          var _n = parseInt(String(_recent[_r][0]).replace(/\D/g, ''));
+          if (!isNaN(_n) && _n > options.orderCache.highestOrderNumber) {
+            options.orderCache.highestOrderNumber = _n;
+            Logger.log('⚠️ Lock: cache was stale — updated highestOrderNumber to ' + _n);
+          }
+        }
+      }
     }
 
     // Generate order and sample numbers
@@ -1482,9 +1692,15 @@ function addDataToSheet(sheet, data, options) {
     if (col['Sample Type'] !== undefined) row[col['Sample Type']] = data.sampleType || '';
     if (col['Shipping Line'] !== undefined) row[col['Shipping Line']] = data.shippingLine || '';
     if (col['Shipping Notes'] !== undefined) row[col['Shipping Notes']] = data.shippingNotes || '';
+    if (col['B/L #'] !== undefined) row[col['B/L #']] = data.bol || '';
+    if (col['Ship Status'] !== undefined) row[col['Ship Status']] = data.shipStatus || '';
 
     // Append the row
     sheet.appendRow(row);
+
+    // --- END CRITICAL SECTION: release lock before post-processing ---
+    lock.releaseLock();
+    lockAcquired = false;
 
     // Get the last row number for post-processing
     var lastRow = sheet.getLastRow();
@@ -1532,6 +1748,10 @@ function addDataToSheet(sheet, data, options) {
     Logger.log('ERROR in addDataToSheet: ' + e);
     Logger.log('Data: ' + JSON.stringify(data));
     throw e;
+  } finally {
+    if (lockAcquired) {
+      try { lock.releaseLock(); } catch (ignore) {}
+    }
   }
 }
 
@@ -1581,14 +1801,14 @@ function deleteSelectedRows() {
     return;
   }
 
-  var confirm = ui.alert(
+  var answer = ui.alert(
     '⚠️ Delete ' + samplesToDelete.length + ' Sample(s)',
     'This will delete from All Orders, Live Orders, and User tabs:\n\n' +
     samplesToDelete.join('\n') +
     '\n\nThis cannot be undone. Continue?',
     ui.ButtonSet.YES_NO
   );
-  if (confirm !== ui.Button.YES) return;
+  if (answer !== ui.Button.YES) return;
 
   // Always delete from main sheet (source of truth)
   var mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
@@ -1627,4 +1847,189 @@ function deleteSelectedRows() {
   }
 
   ui.alert('✅ Deleted ' + deleteCount + ' row(s) from All Orders.\nLive Orders and User tabs refreshed.');
+}
+
+// ============================================================
+// REPAIR RECEIVERS — Re-extract receiver from original emails
+// using the corrected parsers for Serengeti, Sucafina, Covoya
+// ============================================================
+
+function repairReceivers() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(CONFIG.mainSheetName);
+  if (!sheet) { SpreadsheetApp.getUi().alert('No "All Orders" sheet found.'); return; }
+
+  var col = _getColumnMap(sheet);
+  var senderCol = col['Sender'];
+  var receiverCol = col['Receiver'];
+  var emailLinkCol = col['Email Link'];
+  var cargoCol = col['Cargo #'];
+  var containerCol = col['Container #'];
+
+  if (senderCol === undefined || receiverCol === undefined) {
+    SpreadsheetApp.getUi().alert('Missing Sender or Receiver column.');
+    return;
+  }
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { SpreadsheetApp.getUi().alert('No data rows.'); return; }
+
+  var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+
+  // Target senders that had parser bugs
+  var targetSenders = /serengeti|sucafina|covoya/i;
+
+  // Group rows by email thread to avoid re-fetching the same email
+  var threadGroups = {};
+  var targetRows = [];
+
+  for (var i = 0; i < data.length; i++) {
+    var sender = (data[i][senderCol] || '').toString();
+    if (!targetSenders.test(sender)) continue;
+
+    var emailLink = emailLinkCol !== undefined ? (data[i][emailLinkCol] || '').toString() : '';
+    var threadId = '';
+    if (emailLink) {
+      var tidMatch = emailLink.match(/\/([a-f0-9]+)\s*$/i);
+      if (tidMatch) threadId = tidMatch[1];
+    }
+
+    targetRows.push({
+      rowIndex: i,
+      sheetRow: i + 2,
+      sender: sender,
+      currentReceiver: (data[i][receiverCol] || '').toString(),
+      cargo: cargoCol !== undefined ? (data[i][cargoCol] || '').toString() : '',
+      container: containerCol !== undefined ? (data[i][containerCol] || '').toString() : '',
+      threadId: threadId
+    });
+
+    if (threadId && !threadGroups[threadId]) {
+      threadGroups[threadId] = null; // placeholder, will fetch
+    }
+  }
+
+  if (targetRows.length === 0) {
+    SpreadsheetApp.getUi().alert('No Serengeti/Sucafina/Covoya orders found to repair.');
+    return;
+  }
+
+  // Fetch unique threads and re-extract orders
+  var threadIds = Object.keys(threadGroups);
+  Logger.log('repairReceivers: Found ' + targetRows.length + ' rows across ' + threadIds.length + ' threads');
+
+  for (var t = 0; t < threadIds.length; t++) {
+    try {
+      var thread = GmailApp.getThreadById(threadIds[t]);
+      if (!thread) continue;
+      var messages = thread.getMessages();
+      var message = messages[0]; // first message in thread
+
+      var emailBody = message.getPlainBody();
+      var subject = message.getSubject();
+      var senderEmail = message.getFrom();
+
+      // Extract PDF text
+      var pdfText = '';
+      var attachments = message.getAttachments();
+      for (var a = 0; a < attachments.length; a++) {
+        if (attachments[a].getContentType() === 'application/pdf') {
+          try {
+            var text = extractTextFromPDF(attachments[a]);
+            if (text) pdfText += text + '\n\n';
+          } catch (e) { /* skip bad PDF */ }
+        }
+      }
+
+      // Re-extract using fixed parsers
+      var result = extractOrderFromEmail(emailBody, pdfText, senderEmail, subject);
+      if (result.success && result.orders.length > 0) {
+        // Build a map: cargo/container → receiver
+        var receiverMap = [];
+        for (var o = 0; o < result.orders.length; o++) {
+          var order = result.orders[o];
+          var recv = (order.receiver && typeof order.receiver === 'object')
+            ? (order.receiver.name || order.receiver.address || '')
+            : (order.receiver || '');
+          receiverMap.push({
+            cargo: (order.cargo || '').toUpperCase(),
+            container: (order.container || '').toUpperCase(),
+            receiver: recv
+          });
+        }
+        threadGroups[threadIds[t]] = receiverMap;
+      }
+    } catch (e) {
+      Logger.log('repairReceivers: Error fetching thread ' + threadIds[t] + ': ' + e);
+    }
+  }
+
+  // Now match rows to re-extracted receivers and update
+  var updates = [];
+  for (var r = 0; r < targetRows.length; r++) {
+    var row = targetRows[r];
+    if (!row.threadId || !threadGroups[row.threadId]) continue;
+
+    var receiverMap = threadGroups[row.threadId];
+    var newReceiver = '';
+
+    // Try matching by cargo # first, then container #
+    var rowCargo = row.cargo.toUpperCase();
+    var rowContainer = row.container.toUpperCase();
+
+    for (var m = 0; m < receiverMap.length; m++) {
+      if (rowCargo && receiverMap[m].cargo && rowCargo === receiverMap[m].cargo) {
+        newReceiver = receiverMap[m].receiver;
+        break;
+      }
+    }
+    if (!newReceiver) {
+      for (var m2 = 0; m2 < receiverMap.length; m2++) {
+        if (rowContainer && receiverMap[m2].container && rowContainer === receiverMap[m2].container) {
+          newReceiver = receiverMap[m2].receiver;
+          break;
+        }
+      }
+    }
+    // Fallback: if only one receiver extracted, use it for all rows from this thread
+    if (!newReceiver && receiverMap.length > 0) {
+      var uniqueReceivers = [];
+      for (var u = 0; u < receiverMap.length; u++) {
+        if (receiverMap[u].receiver && uniqueReceivers.indexOf(receiverMap[u].receiver) === -1) {
+          uniqueReceivers.push(receiverMap[u].receiver);
+        }
+      }
+      if (uniqueReceivers.length === 1) newReceiver = uniqueReceivers[0];
+    }
+
+    if (newReceiver && newReceiver !== row.currentReceiver) {
+      updates.push({
+        sheetRow: row.sheetRow,
+        oldReceiver: row.currentReceiver,
+        newReceiver: newReceiver,
+        sender: row.sender,
+        cargo: row.cargo
+      });
+      // Write the fix
+      sheet.getRange(row.sheetRow, receiverCol + 1).setValue(newReceiver);
+    }
+  }
+
+  // Report
+  var msg = '🔧 Receiver Repair Complete\n\n';
+  msg += 'Scanned: ' + targetRows.length + ' rows\n';
+  msg += 'Updated: ' + updates.length + ' rows\n\n';
+  for (var u2 = 0; u2 < updates.length; u2++) {
+    msg += 'Row ' + updates[u2].sheetRow + ': "' + updates[u2].oldReceiver + '" → "' + updates[u2].newReceiver + '"';
+    if (updates[u2].cargo) msg += ' (Cargo: ' + updates[u2].cargo + ')';
+    msg += '\n';
+  }
+
+  Logger.log(msg);
+  SpreadsheetApp.getUi().alert(msg);
+
+  // Refresh Live Orders if anything changed
+  if (updates.length > 0) {
+    try { updateLiveOrdersView(); } catch (e) { Logger.log('Live Orders refresh failed: ' + e); }
+  }
 }

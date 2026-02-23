@@ -1,0 +1,6 @@
+.claude/**
+.git/**
+**/.git/**
+*.md
+*.bak
+*.old

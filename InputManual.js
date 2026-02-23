@@ -62,7 +62,7 @@ function processManualOrderEntry(orderData) {
         description: sample.description || '',
         bagCount: sample.bags || '',
         weight: '',
-        sampleWeight: orderData.sampleWeight || customer.sampleWeight || '2 LB',
+        sampleWeight: orderData.sampleWeight || customer.defaultSampleSize || '2 LB',
         pNumber: sample.pNumber || '',
         sNumber: sample.sNumber || '',
         warehouse: (typeof WAREHOUSES !== 'undefined' && WAREHOUSES[orderData.warehouse]) 
@@ -70,13 +70,15 @@ function processManualOrderEntry(orderData) {
           : (orderData.warehouse || ''),
         sender: senderStr,
         receiver: receiverStr,
-        shippingProcess: orderData.shipping || customer.shipping || 'FedEx Overnight',
+        shippingProcess: orderData.shipping || customer.defaultShipping || 'FedEx Overnight',
         comments: 'Manual Entry' + (orderData.fedexAccount ? ' | FedEx: ' + orderData.fedexAccount : ''),
         sourceEmail: orderData.orderNumber || senderStr || 'Manual Entry',
         sampleType: orderData.sampleType || 'Warehouse Sample',
         containerETA: orderData.eta || '',
         shippingLine: orderData.shippingLine || '',
-        shippingNotes: orderData.shippingNotes || ''
+        shippingNotes: orderData.shippingNotes || '',
+        bol: orderData.bolNumber || '',
+        shipStatus: orderData.shipStatus || ''
       };
       
       addDataToSheet(sheet, sampleData, { skipLiveUpdate: true, skipAutoPrint: true });
@@ -122,13 +124,5 @@ function showEnhancedManualEntry() {
 }
 
 // ============================================================
-// WEB APP ENTRY POINT
-// NOTE: Verify if this web app is still deployed. If not,
-// this function can be removed.
+// WEB APP ENTRY POINT — moved to WebApp.js to avoid duplicates
 // ============================================================
-
-function doGet(e) {
-  return HtmlService.createHtmlOutputFromFile('DataEntry')
-    .setTitle('Coffee Sampling - Data Entry')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}

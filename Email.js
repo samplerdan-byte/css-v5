@@ -101,6 +101,8 @@ function sendDailyCustomerReports() {
 
   // Send emails
   let sent = 0;
+  var sendResults = {};  // track per-pattern success/failure
+  var failed = [];
   for (const pattern in customerSamples) {
     const config = customerEmails[pattern];
     const samples = customerSamples[pattern];
@@ -135,13 +137,16 @@ function sendDailyCustomerReports() {
     try {
       GmailApp.sendEmail(config.emails.join(','), subject, '', { htmlBody: body });
       sent++;
+      sendResults[pattern] = 'Sent';
       Logger.log('Sent report to ' + config.name + ': ' + config.emails.join(', '));
     } catch (e) {
+      sendResults[pattern] = 'Failed: ' + e.message;
+      failed.push(config.name + ': ' + e.message);
       Logger.log('Failed to send to ' + config.name + ': ' + e);
     }
   }
 
-  // Log the reports
+  // Log the reports — only log actual status per customer
   const reportLogSheet = ss.getSheetByName('Daily Report Log');
   if (reportLogSheet) {
     for (const pattern in customerSamples) {
@@ -151,13 +156,17 @@ function sendDailyCustomerReports() {
         config.name,
         customerSamples[pattern].length,
         config.emails.join(', '),
-        'Sent',
+        sendResults[pattern] || 'Unknown',
         Session.getActiveUser().getEmail()
       ]);
     }
   }
 
-  ui.alert('Reports Sent!\n\nSent ' + sent + ' customer reports.');
+  var msg = 'Sent ' + sent + ' customer reports.';
+  if (failed.length > 0) {
+    msg += '\n\nFAILED (' + failed.length + '):\n' + failed.join('\n');
+  }
+  ui.alert('Reports Status', msg, ui.ButtonSet.OK);
 }
 
 function getCustomerEmailList() {
@@ -208,14 +217,7 @@ function lookupCustomerEmails(senderName) {
 // GMAIL MESSAGE LINK
 // ============================================================
 
-function getGmailMessageLink(message) {
-  try {
-    const threadId = message.getThread().getId();
-    return 'https://mail.google.com/mail/u/0/#inbox/' + threadId;
-  } catch (e) {
-    return '';
-  }
-}
+// getGmailMessageLink() — moved to Emailextraction_v3.js to avoid duplicates
 
 function getEmailHtmlFromLink(emailLink) {
   if (!emailLink) return null;
@@ -266,64 +268,4 @@ function getEmailHtmlFromLink(emailLink) {
 // SAVE EMAIL ATTACHMENTS TO DRIVE
 // ============================================================
 
-function saveEmailPDFs(message, sampleId) {
-  const saved = [];
-
-  try {
-    const attachments = message.getAttachments();
-
-    let folder = DriveApp.getFoldersByName('CSS Attachments');
-    if (!folder.hasNext()) {
-      folder = DriveApp.createFolder('CSS Attachments');
-    } else {
-      folder = folder.next();
-    }
-
-    attachments.forEach((attachment, index) => {
-      if (attachment.getContentType() === 'application/pdf') {
-        const fileName = sampleId + '_' + (index + 1) + '_' + attachment.getName();
-        const file = folder.createFile(attachment.copyBlob().setName(fileName));
-        saved.push({
-          name: fileName,
-          url: file.getUrl()
-        });
-      }
-    });
-  } catch (e) {
-    Logger.log('Error saving PDFs: ' + e);
-  }
-
-  return saved;
-}
-
-function saveEmailImages(message, sampleId) {
-  const saved = [];
-
-  try {
-    const attachments = message.getAttachments();
-
-    let folder = DriveApp.getFoldersByName('CSS Photos');
-    if (!folder.hasNext()) {
-      folder = DriveApp.createFolder('CSS Photos');
-    } else {
-      folder = folder.next();
-    }
-
-    const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-
-    attachments.forEach((attachment, index) => {
-      if (imageTypes.includes(attachment.getContentType())) {
-        const fileName = sampleId + '_photo_' + (index + 1) + '_' + attachment.getName();
-        const file = folder.createFile(attachment.copyBlob().setName(fileName));
-        saved.push({
-          name: fileName,
-          url: file.getUrl()
-        });
-      }
-    });
-  } catch (e) {
-    Logger.log('Error saving images: ' + e);
-  }
-
-  return saved;
-}
+// saveEmailPDFs() and saveEmailImages() — moved to Emailextraction_v3.js to avoid duplicates

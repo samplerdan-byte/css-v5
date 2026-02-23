@@ -33,49 +33,70 @@ function extractSerengetiOrders(emailBody, pdfText, subject) {
   if (shipMatch) shipping = shipMatch[1].trim();
 
   // Receiver from Address block
-  var receiver = 'Serengeti Trading Company';
+  var receivers = [];
   var addressBlock = allText.match(/Address:\s*([\s\S]*?)(?:Shipping Notes:|Quality:|$)/i);
   if (addressBlock) {
     var addrText = addressBlock[1].trim();
-    var extracted = '';
 
-    var attnMatch = addrText.match(/ATTN:\s*\S+\s+(.+?)\s+\d{3,}/i);
-    if (attnMatch) {
-      extracted = attnMatch[1].trim();
-    } else {
-      var beforeNumber = addrText.match(/^(.+?)\s+\d{3,}/);
-      if (beforeNumber) extracted = beforeNumber[1].trim();
-    }
+    // Split on " AND " to handle multiple receivers
+    var addrChunks = addrText.split(/\s+AND\s+/i);
 
-    if (extracted) {
-      var words = extracted.split(/\s+/);
-      if (words.length >= 2) {
-        var firstWord = words[0];
-        var secondWord = words[1];
-        var looksLikePerson = /^[A-Z][a-z]+$/.test(firstWord) &&
-                              /^[A-Z][a-zA-Z]+$/.test(secondWord) &&
-                              !/Trading|Company|Coffee|Commodities|Inc|LLC|Corp|Sourcing|Roasters|Services|Serengeti|Regal|Papa|Nicholas|Swift/i.test(firstWord) &&
-                              !/Trading|Company|Coffee|Commodities|Inc|LLC|Corp|Sourcing|Roasters|Services|Swift/i.test(secondWord);
+    for (var ac = 0; ac < addrChunks.length; ac++) {
+      var chunk = addrChunks[ac].trim();
+      if (!chunk) continue;
 
-        if (looksLikePerson && words.length > 2) {
-          receiver = words.slice(2).join(' ');
-        } else {
-          receiver = extracted;
-        }
-      } else {
-        receiver = extracted;
+      var extracted = '';
+
+      // Try company name BEFORE "Attn:" first (e.g. "RONNOCO IMPORTING Attn: Robert 4241...")
+      var beforeAttnMatch = chunk.match(/^(.+?)\s+Attn:/i);
+      if (beforeAttnMatch) {
+        extracted = beforeAttnMatch[1].trim();
       }
 
-      if (receiver.split(/\s+/).length === 1) {
-        var knownExpansions = {
-          'Swift': 'Swift Coffee Sourcing',
-          'Regal': 'Regal Commodities',
-          'Papa': 'Papa Nicholas'
-        };
-        if (knownExpansions[receiver]) receiver = knownExpansions[receiver];
+      // Fallback: company name before first street number
+      if (!extracted) {
+        var beforeNumber = chunk.match(/^(.+?)\s+\d{3,}/);
+        if (beforeNumber) {
+          extracted = beforeNumber[1].trim();
+          extracted = extracted.replace(/\s*Attn:.*$/i, '').trim();
+        }
+      }
+
+      if (extracted) {
+        var words = extracted.split(/\s+/);
+        var recvName = extracted;
+
+        if (words.length >= 2) {
+          var firstWord = words[0];
+          var secondWord = words[1];
+          var looksLikePerson = /^[A-Z][a-z]+$/.test(firstWord) &&
+                                /^[A-Z][a-zA-Z]+$/.test(secondWord) &&
+                                !/Trading|Company|Coffee|Commodities|Inc|LLC|Corp|Sourcing|Roasters|Services|Serengeti|Regal|Papa|Nicholas|Swift|Importing|Ronnoco|Foods|Group|Lavazza|America|Sampling|North|Tata|Consumer|Penstock|Atlantic/i.test(firstWord) &&
+                                !/Trading|Company|Coffee|Commodities|Inc|LLC|Corp|Sourcing|Roasters|Services|Swift|Importing|Foods|Group|Lavazza|America|Sampling|North|Consumer|Products|Tata|Atlantic/i.test(secondWord);
+
+          if (looksLikePerson && words.length > 2) {
+            recvName = words.slice(2).join(' ');
+          }
+        }
+
+        if (recvName.split(/\s+/).length === 1) {
+          var knownExpansions = {
+            'Swift': 'Swift Coffee Sourcing',
+            'Regal': 'Regal Commodities',
+            'Papa': 'Papa Nicholas',
+            'Ronnoco': 'RONNOCO IMPORTING'
+          };
+          if (knownExpansions[recvName]) recvName = knownExpansions[recvName];
+        }
+
+        // Clean: remove "Green Coffee Sampling" prefix if followed by a real company
+        recvName = recvName.replace(/^Green\s+Coffee\s+Sampling\s+/i, '').trim();
+
+        if (recvName) receivers.push(recvName);
       }
     }
   }
+  var receiver = receivers.length > 0 ? receivers[0] : 'Serengeti Trading Company';
 
   // Sender from signature
   var sender = '';
@@ -190,6 +211,19 @@ function extractSerengetiOrders(emailBody, pdfText, subject) {
     if (wetMatch) order.comments = wetMatch[1];
 
     if (order.cargo || order.container) orders.push(order);
+  }
+
+  // Duplicate orders for additional receivers (e.g. "Address: Company A AND Company B")
+  if (receivers.length > 1) {
+    var baseOrders = orders.slice();
+    for (var ri = 1; ri < receivers.length; ri++) {
+      for (var oi = 0; oi < baseOrders.length; oi++) {
+        var dup = {};
+        for (var key in baseOrders[oi]) dup[key] = baseOrders[oi][key];
+        dup.receiver = receivers[ri];
+        orders.push(dup);
+      }
+    }
   }
 
   return orders;
@@ -735,9 +769,8 @@ function extractCoffeeAmericaOrders(emailBody, pdfText, subject) {
 
   // Shipping
   var shipping = 'FedEx Priority';
-  if (/priority\s+Fed/i.test(allText)) shipping = 'FedEx Priority';
-  else if (/standard\s+overnight/i.test(allText)) shipping = 'FedEx Standard Overnight';
-  else if (/fedex\s+ground/i.test(allText)) shipping = 'FedEx Ground';
+  if (/standard\s+overnight/i.test(allText)) shipping = 'FedEx Standard Overnight';
+  else if (/fedex\s+ground|via\s+ground/i.test(allText)) shipping = 'FedEx Ground';
   else if (/fedex\s+2[\s-]?day/i.test(allText)) shipping = 'FedEx 2 Day';
   else shipping = extractShipping(allText, emailBody) || 'FedEx Priority';
 
@@ -970,8 +1003,8 @@ function extractIccOrders(emailBody, pdfText, subject) {
   var shipping = '';
   if (/2nd\s*Day/i.test(allText)) shipping = 'FedEx 2 Day';
   else if (/standard\s+overnight/i.test(allText)) shipping = 'FedEx Standard Overnight';
-  else if (/priority/i.test(allText)) shipping = 'FedEx Priority';
-  else if (/ground/i.test(allText)) shipping = 'FedEx Ground';
+  else if (/fedex\s+priority|priority\s+overnight/i.test(allText)) shipping = 'FedEx Priority';
+  else if (/fedex\s+ground|via\s+ground/i.test(allText)) shipping = 'FedEx Ground';
   else shipping = extractShipping(allText, emailBody) || 'FedEx Standard Overnight';
 
   // Parse PDF table rows (standard + ICC-style dashed containers)
@@ -1122,12 +1155,12 @@ function extractOsitoOrders(emailBody, pdfText, subject) {
   if (!receiver) receiver = 'Osito Coffee';
 
   var shipping = 'FedEx Ground';
-  if (/fedex\s+ground/i.test(allText)) shipping = 'FedEx Ground';
-  else if (/standard\s+overnight/i.test(allText)) shipping = 'FedEx Standard Overnight';
+  if (/standard\s+overnight/i.test(allText)) shipping = 'FedEx Standard Overnight';
+  else if (/fedex\s+2[\s-]?day|2nd\s*day/i.test(allText)) shipping = 'FedEx 2 Day';
   else shipping = extractShipping(allText, emailBody) || 'FedEx Ground';
 
   var fedexAccount = '';
-  var fxMatch = allText.match(/account\s*[-:]?\s*(\d{7,12})/i);
+  var fxMatch = allText.match(/(?:fedex|fed\s*ex)\s*account\s*[-:#]?\s*(\d{7,12})/i);
   if (fxMatch) fedexAccount = fxMatch[1];
 
   // Parse cargo-based items
@@ -1211,10 +1244,20 @@ function extractRothfosOrders(emailBody, pdfText, subject) {
     var pMatch = allText.match(/\b(P\d{5,9})\b/);
     if (pMatch) reference = pMatch[1];
   }
+  // Purchase No. with optional letter suffix (e.g., "47266A") from subject or body
+  if (!reference) {
+    var subjPMatch = (subject || '').match(/\bP(\d{4,7}[A-Z]?)\b/);
+    if (subjPMatch) reference = subjPMatch[1];
+  }
 
   var senderRef = '';
   var srMatch = allText.match(/Sender\s+Sample\s+Ref\s*#?[:\s]*(S\d{5,12})/i);
   if (srMatch) senderRef = srMatch[1];
+  // Also check subject for S-number
+  if (!senderRef) {
+    var subjSMatch = (subject || '').match(/\bS\s*(\d{5,12})\b/);
+    if (subjSMatch) senderRef = 'S' + subjSMatch[1];
+  }
 
   var warehouse = detectWarehouse(allText) || 'Continental';
 
@@ -1227,7 +1270,7 @@ function extractRothfosOrders(emailBody, pdfText, subject) {
   }
 
   var container = '';
-  var contMatch = allText.match(/Container\s*#?[:\s]*([A-Z]{4}\d{7})/i);
+  var contMatch = allText.match(/Container\s*(?:number|#|No\.?)?[:\s]*([A-Z]{4}\d{7})/i);
   if (contMatch) container = contMatch[1];
   if (!container) {
     var anyM = allText.match(/\b([A-Z]{4}\d{7})\b/);
@@ -1241,9 +1284,27 @@ function extractRothfosOrders(emailBody, pdfText, subject) {
     while (cc.length < 3) cc = '0' + cc;
     mark = cc + '/' + markMatch[2] + '/' + markMatch[3];
   }
+  // Also try ICO number label or standalone ICO mark format
+  if (!mark) {
+    var icoMatch = allText.match(/ICO\s*(?:number|#|No\.?)?[:\s]*(\d{1,3})\s*[\/\-]\s*(\d{2,5})\s*[\/\-]\s*(\d{3,6}[A-Z]?)/i);
+    if (icoMatch) {
+      var icc = icoMatch[1];
+      while (icc.length < 3) icc = '0' + icc;
+      mark = icc + '/' + icoMatch[2] + '/' + icoMatch[3];
+    }
+  }
+  // Fallback: any 3-part ICO-style mark in text
+  if (!mark) {
+    var anyMark = allText.match(/\b(\d{1,3})\s*[\/\-]\s*(\d{2,5})\s*[\/\-]\s*(\d{3,6}[A-Z]?)\b/);
+    if (anyMark && !/^20[0-3]\d$/.test(anyMark[1])) {
+      var acc = anyMark[1];
+      while (acc.length < 3) acc = '0' + acc;
+      mark = acc + '/' + anyMark[2] + '/' + anyMark[3];
+    }
+  }
 
   var cargo = '';
-  var cargoMatch = allText.match(/Cargo\s+(?:Ref\s+)?#?[:\s]*(C\d{5,7}[A-Z]?)/i);
+  var cargoMatch = allText.match(/Cargo\s+(?:Ref\s+)?(?:number\s+)?#?[:\s]*(C\d{5,7}[A-Z]?)/i);
   if (cargoMatch) cargo = cargoMatch[1].toUpperCase();
   if (!cargo) {
     var cM = allText.match(/\b(C\d{5,7})\b/i);
@@ -1253,14 +1314,52 @@ function extractRothfosOrders(emailBody, pdfText, subject) {
   var bags = '';
   var bagsMatch = allText.match(/Available\s+Qty[:\s]*(\d+)\s+(Kg\s+)?Bags/i);
   if (bagsMatch && !bagsMatch[2]) bags = bagsMatch[1];
+  // Fallback: BAGS label followed by a number, or number before/after "bags" keyword
+  if (!bags) {
+    var simpleBags = allText.match(/\bBAGS\b[^\d\n]*?(\d{1,4})\b/i);
+    if (simpleBags && parseInt(simpleBags[1]) <= 2000) bags = simpleBags[1];
+  }
+  if (!bags) {
+    var revBags = allText.match(/\b(\d{1,4})\s*\n?\s*\bBAGS\b/i);
+    if (revBags && parseInt(revBags[1]) <= 2000) bags = revBags[1];
+  }
 
   var description = '';
   var origMatch = allText.match(/Origin\s+Grade[^\n]*\n\s*([^\n]+)/i);
   if (origMatch) description = origMatch[1].trim().replace(/\s+[SR]\d{8,}.*$/, '').trim();
+  // Fallback: QUALITY label or value
+  if (!description) {
+    var qualMatch = allText.match(/\bQUALITY\b[^\w\n]*\n?\s*([A-Za-z][A-Za-z\s]+?)(?:\s*\n|$)/i);
+    if (qualMatch) description = qualMatch[1].trim();
+  }
+  // Fallback: origin country in subject line
+  if (!description) {
+    var subjOrigin = (subject || '').match(/\b(HOND(?:URAS)?|COLOMBIA|BRAZIL|PERU|ETHIOPIA|GUATEMALA|COSTA RICA|MEXICO|KENYA|RWANDA|BURUNDI|INDONESIA|VIETNAM|UGANDA|TANZANIA|NICARAGUA|EL SALVADOR|ECUADOR)\b/i);
+    if (subjOrigin) {
+      description = subjOrigin[1].charAt(0).toUpperCase() + subjOrigin[1].slice(1).toLowerCase();
+      if (/^HOND$/i.test(subjOrigin[1])) description = 'Honduras';
+    }
+  }
 
   var receiver = '';
   var recvMatch = allText.match(/Send\s+Samples?\s+to[:\s]+([^\n]+)/i);
   if (recvMatch) receiver = recvMatch[1].trim().replace(/\d{3,}.*$/, '').replace(/,\s*$/, '').trim();
+  // Broader: "send NLB sample to COMPANY" with words between send and to
+  if (!receiver || receiver === 'Rothfos') {
+    var broadRecv = allText.match(/(?:send|ship)\s+[\w\s]+to\s+([A-Z][A-Za-z\s&'+,\.\/]+?)(?:\s+per\s|\s+at\s|\s+via\s|\s*\n)/i);
+    if (broadRecv) {
+      var bName = broadRecv[1].trim().replace(/,\s*$/, '');
+      if (bName.length >= 3 && !/^(FedEx|UPS|overnight|ground|priority)/i.test(bName)) receiver = bName;
+    }
+  }
+  // Also try company name block after data (COMPANY\nADDRESS\nCITY, STATE)
+  if (!receiver || receiver === 'Rothfos') {
+    var blockRecv = allText.match(/\n\s*([A-Z][A-Z\s&'+\.]+(?:COMPANY|CORP|LLC|INC|LTD|CO\.|COFFEE|ROAST)[\w\s]*)\s*\n\s*\d/i);
+    if (blockRecv) {
+      var blockName = blockRecv[1].trim();
+      if (blockName.length >= 3 && !/^(RPM|CONTINENTAL|AVENEL|DUPUY|GREENPOINT)/i.test(blockName)) receiver = blockName;
+    }
+  }
   if (!receiver) receiver = 'Rothfos';
 
   var shipping = extractShipping(allText, emailBody) || 'FedEx 2 Day';
@@ -1331,8 +1430,9 @@ function extractLdcOrders(emailBody, pdfText, subject) {
   var description = [origin, quality].filter(function(x) { return x; }).join(' ');
 
   var shipping = 'FedEx Standard Overnight';
-  if (/standard\s+overnight/i.test(allText)) shipping = 'FedEx Standard Overnight';
-  else if (/priority/i.test(allText)) shipping = 'FedEx Priority';
+  if (/fedex\s+priority|priority\s+overnight/i.test(allText)) shipping = 'FedEx Priority';
+  else if (/fedex\s+2[\s-]?day|2nd\s*day/i.test(allText)) shipping = 'FedEx 2 Day';
+  else if (/fedex\s+ground|via\s+ground/i.test(allText)) shipping = 'FedEx Ground';
   else shipping = extractShipping(allText, emailBody) || 'FedEx Standard Overnight';
 
   var fedexAccount = '';
@@ -1432,22 +1532,60 @@ function extractSucafinaOrders(emailBody, pdfText, subject) {
   // Receiver
   var receiver = '';
   if (isTastify) {
-    var custMatch = allText.match(/Customer[:\s]+([A-Z][A-Z\s&.,']+(?:LLC|INC|CORP|CO|LTD)?)/i);
-    if (custMatch) receiver = custMatch[1].trim();
+    // "Customer: ROOSEVELT COFFEE LLC" — match "Customer:" at start of line, not mid-sentence
+    var custMatch = allText.match(/^Customer[:\s]+([^\n]+)/im) || allText.match(/\nCustomer[:\s]+([^\n]+)/i);
+    if (custMatch) {
+      var custName = custMatch[1].trim();
+      // Strip leading junk like "information:>" or "details:>" prefixes
+      custName = custName.replace(/^.*(?:information|details|recipient)\s*[:>]+\s*/i, '');
+      // If there's another "Customer:" embedded, grab what's after it
+      var innerCust = custName.match(/Customer[:\s]+(.+)/i);
+      if (innerCust) custName = innerCust[1].trim();
+      // Strip trailing junk like "Street Address", email headers, etc.
+      custName = custName.replace(/\s*Street\s*Address.*$/i, '').trim();
+      custName = custName.replace(/\s*Phone.*$/i, '').trim();
+      custName = custName.replace(/\s*Email.*$/i, '').trim();
+      if (custName && custName !== '-' && custName.length >= 3) receiver = custName;
+    }
     if (!receiver || receiver.length < 3) {
-      var recipMatch = allText.match(/Recipient[:\s]+([A-Za-z][A-Za-z\s]+?)(?=\n|Street)/i);
-      if (recipMatch) receiver = recipMatch[1].trim();
+      var recipMatch = allText.match(/Recipient[:\s]+([^\n]+)/i);
+      if (recipMatch) {
+        var recipName = recipMatch[1].trim();
+        recipName = recipName.replace(/^.*(?:information|details)\s*[:>]+\s*/i, '');
+        recipName = recipName.replace(/\s*Street.*$/i, '').trim();
+        if (recipName && recipName !== '-' && recipName.length >= 3) receiver = recipName;
+      }
     }
     if (!receiver || receiver === '-') {
-      var altRecv = allText.match(/recipient\s+information\s+below[^]*?\n\s*([A-Z][A-Za-z\s]+?)\s+\d/i);
+      var altRecv = allText.match(/recipient\s+information\s+below[\s\S]*?\n\s*([A-Z][A-Za-z\s]+?)\s+\d/i);
       if (altRecv) receiver = altRecv[1].trim();
     }
   } else {
-    var recvMatch = allText.match(/SUCAFINA\s+NA\s+(?:INC\.?)?\s*\n/i);
-    if (recvMatch) receiver = 'Sucafina NA Inc';
+    // Look for receiver name after "SUCAFINA NA SAMPLE ORDER" header line
+    // Format: "SUCAFINA NA SAMPLE ORDER\n\nKERRY INGREDIENTS & FLAVOURS\n__Instructions:__"
+    var afterHeaderMatch = allText.match(/SUCAFINA\s+(?:NA\s+)?(?:INC\.?\s+)?SAMPLE\s+ORDER\s*\n+\s*([A-Z][^\n_]+?)\s*(?:\n|__)/i);
+    if (afterHeaderMatch) {
+      var headerRecv = afterHeaderMatch[1].trim();
+      // Make sure it's not just "SUCAFINA" repeated or an instruction keyword
+      if (headerRecv && headerRecv.length >= 3 && !/^SUCAFINA|^Instructions|^Please|^Send|^WHSE|^Customer/i.test(headerRecv)) {
+        receiver = headerRecv;
+      }
+    }
+    // Also try "send the below/following to [Company]:" pattern from email body
     if (!receiver) {
-      var addrMatch = allText.match(/(\d+\s+[A-Za-z\s]+(?:Blvd|Ave|St|Road|Dr))/i);
-      if (addrMatch) receiver = 'Sucafina NA Inc';
+      var sendToMatch = allText.match(/send\s+(?:the\s+)?(?:below|above|following)\s+(?:samples?\s+)?to\s+([A-Za-z][A-Za-z\s&',\.]+?)\s*:/i);
+      if (sendToMatch) {
+        var sendRecv = sendToMatch[1].trim();
+        if (sendRecv && sendRecv.length >= 3 && !/^SUCAFINA/i.test(sendRecv)) receiver = sendRecv;
+      }
+    }
+    if (!receiver) {
+      var recvMatch = allText.match(/SUCAFINA\s+NA\s+(?:INC\.?)?\s*\n/i);
+      if (recvMatch) receiver = 'Sucafina NA Inc';
+      if (!receiver) {
+        var addrMatch = allText.match(/(\d+\s+[A-Za-z\s]+(?:Blvd|Ave|St|Road|Dr))/i);
+        if (addrMatch) receiver = 'Sucafina NA Inc';
+      }
     }
   }
   if (!receiver) receiver = 'Sucafina NA Inc';
@@ -1458,7 +1596,7 @@ function extractSucafinaOrders(emailBody, pdfText, subject) {
     var ssMatch = allText.match(/(\d+)\s*(lb|lbs|g|oz)\s+sample/i);
     if (ssMatch) {
       var u = (ssMatch[2] || 'lb').toLowerCase();
-      sampleSize = u.startsWith('g') ? ssMatch[1] + 'g' : ssMatch[1] + ' lb';
+      sampleSize = u.startsWith('g') ? ssMatch[1] + 'g' : u === 'oz' ? ssMatch[1] + ' oz' : ssMatch[1] + ' lb';
     }
   } else {
     var tsMatch = allText.match(/(\d+)\s*g(?:ram)?\b/i);
@@ -1466,80 +1604,106 @@ function extractSucafinaOrders(emailBody, pdfText, subject) {
   }
 
   var shipping = 'FedEx Standard Overnight';
-  if (/overnight/i.test(allText)) shipping = 'FedEx Standard Overnight';
-  else if (/2nd?\s*day/i.test(allText)) shipping = 'FedEx 2 Day';
-  else if (/ground/i.test(allText)) shipping = 'FedEx Ground';
+  if (/2nd?\s*day/i.test(allText)) shipping = 'FedEx 2 Day';
+  else if (/fedex\s+ground|via\s+ground/i.test(allText)) shipping = 'FedEx Ground';
   else shipping = extractShipping(allText, emailBody) || 'FedEx Standard Overnight';
 
-  // Find container+cargo pairs as anchors
-  var lines = allText.split('\n');
+  // --- Tastify: split table into per-sample rows by row numbers ---
+  // Tastify table rows start with row number: "1CONTI NJ..." or "2CONTI NJ..."
+  // Split on these boundaries to prevent cargo/container bleed between samples
+  var sampleRows = [];
+  if (isTastify) {
+    var tableText = allText;
+    // Find the "Samples Requested:" section
+    var samplesStart = tableText.match(/Samples\s+Requested\s*:?\s*\n?/i);
+    if (samplesStart) tableText = tableText.substring(samplesStart.index + samplesStart[0].length);
 
-  for (var i = 0; i < lines.length; i++) {
-    var line = lines[i];
+    // Find row start positions: sequential row numbers (1, 2, 3...) followed by warehouse name
+    // Challenge: row number can be jammed against prior cargo like "C3726992CONTI"
+    // Strategy: find ALL matches of digit(s)+WHSE, then pick the sequential chain starting at 1
+    var whseNames = '(?:CONTI|RPM|CONTINENTAL|FLORENCE|GREENPOINT|DUPUY)';
+    var rowStartRe = new RegExp('(\\d{1,2})(' + whseNames + ')', 'gi');
+    var candidates = []; // {index, rowNum}
+    var rsMatch;
+    while ((rsMatch = rowStartRe.exec(tableText)) !== null) {
+      candidates.push({ index: rsMatch.index, rowNum: parseInt(rsMatch[1]) });
+    }
+    // Walk candidates looking for sequential row numbers: 1, 2, 3, ...
+    var expectedRow = 1;
+    var rowStarts = [];
+    for (var ci = 0; ci < candidates.length; ci++) {
+      if (candidates[ci].rowNum === expectedRow) {
+        rowStarts.push(candidates[ci].index);
+        expectedRow++;
+      }
+    }
+    for (var rs = 0; rs < rowStarts.length; rs++) {
+      var startIdx = rowStarts[rs];
+      var endIdx = (rs + 1 < rowStarts.length) ? rowStarts[rs + 1] : tableText.length;
+      var chunk = tableText.substring(startIdx, endIdx).trim();
+      if (chunk.length > 10) sampleRows.push(chunk);
+    }
+  }
 
-    if (/\bContainer\s*#?\b/i.test(line) && /\bCargo\s*#?\b/i.test(line)) continue;
-    if (/\bWHSE\b/i.test(line) && /\bOrigin\b/i.test(line) && /\bMarks\b/i.test(line)) continue;
+  if (sampleRows.length > 0) {
+    // --- Tastify row-based parsing ---
+    for (var sr = 0; sr < sampleRows.length; sr++) {
+      var rowText = sampleRows[sr];
 
-    var contCargoPattern = /\b([A-Z]{4}\d{7})\s*(C\d{5,7})\b/gi;
-    var ccMatch;
-
-    while ((ccMatch = contCargoPattern.exec(line)) !== null) {
-      var container = ccMatch[1];
-      var cargo = ccMatch[2].toUpperCase();
-
-      var beforeText = line.substring(0, ccMatch.index);
-      var afterCargo = line.substring(ccMatch.index + ccMatch[0].length);
+      // Container + Cargo (may be absent for some samples)
+      var container = '';
+      var cargo = '';
+      var ccPair = rowText.match(/\b([A-Z]{4}\d{7})(C\d{5,7})\b/);
+      if (ccPair) {
+        container = ccPair[1];
+        cargo = ccPair[2].toUpperCase();
+      } else {
+        var contOnly = rowText.match(/\b([A-Z]{4}\d{7})\b/);
+        if (contOnly) container = contOnly[1];
+        var cargOnly = rowText.match(/\b(C\d{5,7})\b/i);
+        if (cargOnly) cargo = cargOnly[1].toUpperCase();
+      }
 
       // ICO Mark
       var mark = '';
-      var allMarks = [];
-      var markRe = /\b(\d{1,3})\/(\d{2,5})\/(\d{3,6}[A-Z]?)\b/g;
-      var mm;
-      while ((mm = markRe.exec(beforeText)) !== null) {
-        if (/^20[0-3]\d$/.test(mm[1])) continue;
-        var cc = mm[1];
-        while (cc.length < 3) cc = '0' + cc;
-        allMarks.push({ mark: cc + '/' + mm[2] + '/' + mm[3], endIndex: mm.index + mm[0].length });
+      var markMatch = rowText.match(/\b(\d{1,3})\/(\d{2,5})\/(\d{3,6}[A-Z]?)\b/);
+      if (markMatch && !/^20[0-3]\d$/.test(markMatch[1])) {
+        var mc = markMatch[1]; while (mc.length < 3) mc = '0' + mc;
+        mark = mc + '/' + markMatch[2] + '/' + markMatch[3];
       }
-      if (allMarks.length > 0) mark = allMarks[allMarks.length - 1].mark;
+
+      // NP Reference (supports letter suffix like NPCO-32397A)
+      var npRef = '';
+      var npM = rowText.match(/\b(NP[A-Z]{2}-\d{4,6}[A-Z]?(?:-\d)?)\b/i);
+      if (npM) npRef = npM[1].toUpperCase();
 
       // Bags
       var bags = '';
-      if (!isTastify) {
-        var bagsAfter = afterCargo.match(/\b(\d{1,4})\b/);
-        if (bagsAfter && parseInt(bagsAfter[1]) <= 2000) bags = bagsAfter[1];
-        if (!bags) {
-          var beforeCont = beforeText;
-          if (allMarks.length > 0) beforeCont = beforeText.substring(allMarks[allMarks.length - 1].endIndex);
-          var bagsBefore = beforeCont.match(/\b(\d{1,4})\b/);
-          if (bagsBefore && parseInt(bagsBefore[1]) <= 2000) bags = bagsBefore[1];
-        }
-      } else {
-        if (allMarks.length > 0) {
-          var afterMarkText = beforeText.substring(allMarks[allMarks.length - 1].endIndex);
-          var tastifyBags = afterMarkText.match(/^(\d{1,4})(?:No|Yes)/i);
-          if (tastifyBags) bags = tastifyBags[1];
-        }
-      }
+      var bagsM = rowText.match(/(\d{1,4})(?:No|Yes)/i);
+      if (bagsM && parseInt(bagsM[1]) <= 2000) bags = bagsM[1];
 
-      // NP Reference
-      var npRef = '';
-      var npMatch = beforeText.match(/\b(NP[A-Z]{2}-\d{4,6}(?:-\d)?)\b/i);
-      if (npMatch) npRef = npMatch[1].toUpperCase();
-
-      // Description
+      // Description from origin + grade
       var description = '';
-      var originWords = beforeText.match(/\b(COLO|Colombia|Brazil|Peru|Honduras|Guatemala|Costa Rica|Mexico|Ethiopia|Kenya|Rwanda|Burundi|Indonesia|Vietnam|India|Uganda|Tanzania|Nicaragua|El Salvador|Ecuador|Bolivia)\b/i);
-      if (originWords) {
-        var origEnd = beforeText.indexOf(originWords[0]) + originWords[0].length;
-        var gradeText = beforeText.substring(origEnd).trim().replace(/\s*NP[A-Z]{2}[-\d]+.*$/i, '').trim();
-        description = gradeText.length > 2 ? originWords[1] + ' ' + gradeText : originWords[1];
+      var originAbbrevs = {
+        'COLO': 'Colombia', 'BRAZ': 'Brazil', 'ETHI': 'Ethiopia', 'RWAN': 'Rwanda',
+        'BURU': 'Burundi', 'HOND': 'Honduras', 'GUAT': 'Guatemala', 'INDO': 'Indonesia',
+        'VIET': 'Vietnam', 'UGAN': 'Uganda', 'TANZ': 'Tanzania', 'NICA': 'Nicaragua',
+        'ECUA': 'Ecuador', 'PNG': 'Papua New Guinea', 'DRC': 'DR Congo'
+      };
+      var origMatch = rowText.match(/(?:CONTI\s*NJ|RPM|CONTINENTAL|FLORENCE)\s*([A-Za-z\s]+?)(?=(?:Natural|Washed|Honey|FW|Scr|Grade|Org|AA|AB|SHB|EP|FAQ|NP[A-Z]{2}))/i);
+      if (origMatch) {
+        var originRaw = origMatch[1].trim();
+        var gradeStart = origMatch.index + origMatch[0].length;
+        var gradeEnd = rowText.indexOf('NP', gradeStart);
+        if (gradeEnd === -1) gradeEnd = rowText.length;
+        var gradeRaw = rowText.substring(gradeStart, gradeEnd).replace(/\bLONG\b/gi, '').trim();
+        var fullOrigin = originAbbrevs[originRaw.toUpperCase()] || originRaw;
+        description = fullOrigin + (gradeRaw ? ' ' + gradeRaw : '');
       }
-      description = description.replace(/\bCOLO\b/i, 'Colombia');
       if (!description) description = getOriginFromMark(mark) || '';
 
       orders.push({
-        client: isTastify ? 'Sucafina NA (Tastify)' : 'Sucafina NA',
+        client: 'Sucafina NA (Tastify)',
         sampleOrderNum: orderNum,
         container: container,
         mark: mark,
@@ -1551,50 +1715,188 @@ function extractSucafinaOrders(emailBody, pdfText, subject) {
         shipping: shipping,
         fedexAccount: '',
         bags: bags,
-        origin: getOriginFromMark(mark),
+        origin: getOriginFromMark(mark) || '',
         description: description,
         comments: ''
       });
     }
-  }
+  } else {
+    // --- Standard Sucafina: container+cargo pairs on same line ---
+    var lines = allText.split('\n');
 
-  // Fallback: containers and cargos separately
-  if (orders.length === 0) {
-    var containers = [];
-    var cargos = [];
-    var marks = [];
-    var contRe = /\b([A-Z]{4}\d{7})\b/g;
-    var cargRe = /\b(C\d{5,7})\b/gi;
-    var markRe2 = /\b(\d{1,3})\/(\d{2,5})\/(\d{3,6}[A-Z]?)\b/g;
-    var m;
-    while ((m = contRe.exec(allText)) !== null) containers.push(m[1]);
-    while ((m = cargRe.exec(allText)) !== null) cargos.push(m[1].toUpperCase());
-    while ((m = markRe2.exec(allText)) !== null) {
-      if (/^20[0-3]\d$/.test(m[1])) continue;
-      var mcc = m[1]; while (mcc.length < 3) mcc = '0' + mcc;
-      marks.push(mcc + '/' + m[2] + '/' + m[3]);
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+
+      if (/\bContainer\s*#?\b/i.test(line) && /\bCargo\s*#?\b/i.test(line)) continue;
+      if (/\bWHSE\b/i.test(line) && /\bOrigin\b/i.test(line) && /\bMarks\b/i.test(line)) continue;
+
+      // Pattern 1: container + C-prefixed cargo (may be concatenated)
+      // Pattern 2: container + space + bare cargo number (no C, possibly with R suffix)
+      var contCargoPattern = /\b([A-Z]{4}\d{7})(C\d{5,7}[A-Z]?)\b|\b([A-Z]{4}\d{7})\s+(\d{6,7}[A-Z]?)\b/gi;
+      var ccMatch;
+
+      while ((ccMatch = contCargoPattern.exec(line)) !== null) {
+        var stdContainer = ccMatch[1] || ccMatch[3];
+        var rawCargo = ccMatch[2] || ccMatch[4];
+        var stdCargo = /^C/i.test(rawCargo) ? rawCargo.toUpperCase() : 'C' + rawCargo.toUpperCase();
+
+        var beforeText = line.substring(0, ccMatch.index);
+        var afterCargo = line.substring(ccMatch.index + ccMatch[0].length);
+
+        // ICO Mark
+        var stdMark = '';
+        var allMarks = [];
+        var markRe = /\b(\d{1,3})\/(\d{2,5})\/(\d{3,6}[A-Z]?)\b/g;
+        var mm;
+        while ((mm = markRe.exec(beforeText)) !== null) {
+          if (/^20[0-3]\d$/.test(mm[1])) continue;
+          var mcc = mm[1];
+          while (mcc.length < 3) mcc = '0' + mcc;
+          allMarks.push({ mark: mcc + '/' + mm[2] + '/' + mm[3], endIndex: mm.index + mm[0].length });
+        }
+        if (allMarks.length > 0) stdMark = allMarks[allMarks.length - 1].mark;
+
+        // Bags
+        var stdBags = '';
+        var bagsAfter = afterCargo.match(/\b(\d{1,4})\b/);
+        if (bagsAfter && parseInt(bagsAfter[1]) <= 2000) stdBags = bagsAfter[1];
+        if (!stdBags) {
+          var beforeCont = beforeText;
+          if (allMarks.length > 0) beforeCont = beforeText.substring(allMarks[allMarks.length - 1].endIndex);
+          var bagsBefore = beforeCont.match(/\b(\d{1,4})\b/);
+          if (bagsBefore && parseInt(bagsBefore[1]) <= 2000) stdBags = bagsBefore[1];
+        }
+
+        // NP Reference (supports letter suffix like NPCO-32397A)
+        var stdNpRef = '';
+        var stdNpMatch = beforeText.match(/\b(NP[A-Z]{2}-\d{4,6}[A-Z]?(?:-\d)?)\b/i);
+        if (stdNpMatch) stdNpRef = stdNpMatch[1].toUpperCase();
+        // Also try NS reference (e.g., NSPE-39116)
+        if (!stdNpRef) {
+          var stdNsMatch = beforeText.match(/\b(NS[A-Z]{2}-\d{4,6}[A-Z]?)\b/i);
+          if (stdNsMatch) stdNpRef = stdNsMatch[1].toUpperCase();
+        }
+
+        // Description
+        var stdDesc = '';
+        var stdOriginWords = beforeText.match(/\b(COLO|Colombia|BRAZ|Brazil|Peru|Honduras|HOND|Guatemala|GUAT|Costa Rica|Mexico|Ethiopia|ETHI|Kenya|Rwanda|RWAN|Burundi|BURU|Indonesia|INDO|Vietnam|VIET|India|Uganda|UGAN|Tanzania|TANZ|Nicaragua|NICA|El Salvador|Ecuador|ECUA|Bolivia|Papua New Guinea|PNG|Congo|DRC|DR Congo)\b/i);
+        if (stdOriginWords) {
+          var stdOrigEnd = beforeText.indexOf(stdOriginWords[0]) + stdOriginWords[0].length;
+          var stdGradeText = beforeText.substring(stdOrigEnd).trim().replace(/\s*NP[A-Z]{2}[-\d]+.*$/i, '').trim();
+          stdDesc = stdGradeText.length > 2 ? stdOriginWords[1] + ' ' + stdGradeText : stdOriginWords[1];
+        }
+        stdDesc = stdDesc.replace(/\bCOLO\b/i, 'Colombia')
+          .replace(/\bBRAZ\b/i, 'Brazil').replace(/\bETHI\b/i, 'Ethiopia')
+          .replace(/\bRWAN\b/i, 'Rwanda').replace(/\bBURU\b/i, 'Burundi')
+          .replace(/\bHOND\b/i, 'Honduras').replace(/\bGUAT\b/i, 'Guatemala')
+          .replace(/\bINDO\b/i, 'Indonesia').replace(/\bVIET\b/i, 'Vietnam')
+          .replace(/\bUGAN\b/i, 'Uganda').replace(/\bTANZ\b/i, 'Tanzania')
+          .replace(/\bNICA\b/i, 'Nicaragua').replace(/\bECUA\b/i, 'Ecuador')
+          .replace(/\bPNG\b/i, 'Papua New Guinea').replace(/\bDRC\b/i, 'DR Congo');
+        if (!stdDesc) stdDesc = getOriginFromMark(stdMark) || '';
+
+        orders.push({
+          client: 'Sucafina NA',
+          sampleOrderNum: orderNum,
+          container: stdContainer,
+          mark: stdMark,
+          cargo: stdCargo,
+          reference: stdNpRef,
+          warehouse: warehouse,
+          receiver: receiver,
+          sampleSize: sampleSize,
+          shipping: shipping,
+          fedexAccount: '',
+          bags: stdBags,
+          origin: getOriginFromMark(stdMark),
+          description: stdDesc,
+          comments: ''
+        });
+      }
     }
 
-    var count = Math.max(containers.length, cargos.length, marks.length);
-    for (var j = 0; j < count; j++) {
-      var mk = marks[j] || marks[0] || '';
-      orders.push({
-        client: isTastify ? 'Sucafina NA (Tastify)' : 'Sucafina NA',
-        sampleOrderNum: orderNum,
-        container: containers[j] || '',
-        mark: mk,
-        cargo: cargos[j] || '',
-        reference: '',
-        warehouse: warehouse,
-        receiver: receiver,
-        sampleSize: sampleSize,
-        shipping: shipping,
-        fedexAccount: '',
-        bags: '',
-        origin: getOriginFromMark(mk),
-        description: getOriginFromMark(mk) || '',
-        comments: ''
-      });
+    // Fallback: containers and cargos separately
+    if (orders.length === 0) {
+      var fallContainers = [];
+      var fallCargos = [];
+      var fallMarks = [];
+      var contRe = /\b([A-Z]{4}\d{7})\b/g;
+      var cargRe = /\b(C\d{5,7}[A-Z]?)\b/gi;
+      var markRe2 = /\b(\d{1,3})\/(\d{2,5})\/(\d{3,6}[A-Z]?)\b/g;
+      var fm;
+      while ((fm = contRe.exec(allText)) !== null) fallContainers.push(fm[1]);
+      while ((fm = cargRe.exec(allText)) !== null) fallCargos.push(fm[1].toUpperCase());
+      while ((fm = markRe2.exec(allText)) !== null) {
+        if (/^20[0-3]\d$/.test(fm[1])) continue;
+        var fmc = fm[1]; while (fmc.length < 3) fmc = '0' + fmc;
+        fallMarks.push(fmc + '/' + fm[2] + '/' + fm[3]);
+      }
+
+      var count = Math.max(fallContainers.length, fallCargos.length, fallMarks.length);
+      for (var j = 0; j < count; j++) {
+        var fmk = fallMarks[j] || fallMarks[0] || '';
+        orders.push({
+          client: 'Sucafina NA',
+          sampleOrderNum: orderNum,
+          container: fallContainers[j] || '',
+          mark: fmk,
+          cargo: fallCargos[j] || '',
+          reference: '',
+          warehouse: warehouse,
+          receiver: receiver,
+          sampleSize: sampleSize,
+          shipping: shipping,
+          fedexAccount: '',
+          bags: '',
+          origin: getOriginFromMark(fmk),
+          description: getOriginFromMark(fmk) || '',
+          comments: ''
+        });
+      }
+    }
+  }
+
+  // --- Enrich bare-country descriptions with Purchase Grade from email text ---
+  if (orders.length > 0) {
+    var needsGrade = false;
+    for (var ng = 0; ng < orders.length; ng++) {
+      var d = orders[ng].description || '';
+      if (!d || /^(Colombia|Brazil|Peru|Honduras|Guatemala|Costa Rica|Mexico|Ethiopia|Kenya|Rwanda|Burundi|Indonesia|Vietnam|India|Uganda|Tanzania|Nicaragua|El Salvador|Ecuador|Papua New Guinea|DR Congo)$/i.test(d)) {
+        needsGrade = true;
+        break;
+      }
+    }
+    if (needsGrade) {
+      // Scan text for origin abbreviation/name followed by grade text, terminated by ref/mark/container pattern
+      var gradeRe = /\b(COLO|Colombia|BRAZ|Brazil|Peru|Honduras|HOND|Guatemala|GUAT|Costa\s*Rica|Mexico|Ethiopia|ETHI|Kenya|Rwanda|RWAN|Burundi|BURU|Indonesia|INDO|Vietnam|VIET|India|Uganda|UGAN|Tanzania|TANZ|Nicaragua|NICA|El\s*Salvador|Ecuador|ECUA|Papua\s*New\s*Guinea|PNG|DRC|DR\s*Congo)\b[\s\n]+([A-Za-z][A-Za-z\s\/\.\+\-\(\),]+?)(?=[\s\n]+(?:[A-Z]{2,4}[-]?\d{3,6}|[A-Z]\d{1,2}\b|\d{3}\/\d{2,5}\/))/i;
+      var gradeHit = allText.match(gradeRe);
+      if (gradeHit) {
+        var gradeText = gradeHit[2].trim();
+        // Filter out header words
+        if (gradeText.length > 2 && !/^(Purchase|Grade|WHSE|Origin|Container|Cargo|Marks|Bags|NP)\b/i.test(gradeText)) {
+          var gradeOrigin = gradeHit[1].trim()
+            .replace(/\bCOLO\b/i, 'Colombia').replace(/\bBRAZ\b/i, 'Brazil')
+            .replace(/\bETHI\b/i, 'Ethiopia').replace(/\bRWAN\b/i, 'Rwanda')
+            .replace(/\bBURU\b/i, 'Burundi').replace(/\bHOND\b/i, 'Honduras')
+            .replace(/\bGUAT\b/i, 'Guatemala').replace(/\bINDO\b/i, 'Indonesia')
+            .replace(/\bVIET\b/i, 'Vietnam').replace(/\bUGAN\b/i, 'Uganda')
+            .replace(/\bTANZ\b/i, 'Tanzania').replace(/\bNICA\b/i, 'Nicaragua')
+            .replace(/\bECUA\b/i, 'Ecuador').replace(/\bPNG\b/i, 'Papua New Guinea')
+            .replace(/\bDRC\b/i, 'DR Congo');
+          // Avoid doubling: if gradeText already starts with the origin, strip it
+          var cleanGrade = gradeText;
+          if (cleanGrade.toLowerCase().startsWith(gradeOrigin.toLowerCase())) {
+            cleanGrade = cleanGrade.substring(gradeOrigin.length).trim();
+          }
+          var fullGradeDesc = cleanGrade.length > 0 ? gradeOrigin + ' ' + cleanGrade : gradeOrigin;
+          for (var eg = 0; eg < orders.length; eg++) {
+            var ed = orders[eg].description || '';
+            if (!ed || /^(Colombia|Brazil|Peru|Honduras|Guatemala|Costa Rica|Mexico|Ethiopia|Kenya|Rwanda|Burundi|Indonesia|Vietnam|India|Uganda|Tanzania|Nicaragua|El Salvador|Ecuador|Papua New Guinea|DR Congo)$/i.test(ed)) {
+              orders[eg].description = fullGradeDesc;
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1709,6 +2011,192 @@ function extractCoffeeSourceOrders(emailBody, pdfText, subject) {
       description: description || origin || '',
       comments: ''
     });
+  }
+
+  return orders;
+}
+
+
+// ============================================================================
+// COVOYA SPECIALTY COFFEE
+// Format: repeating line blocks in email body, each sample is ~10 lines:
+//   Line ref (P######-#)
+//   Origin country
+//   Cargo (C######)
+//   Container (XXXX#######)
+//   Mark (###/##/XX##)
+//   Description (coffee name)
+//   Warehouse name
+//   Type (Arrival/Pre-ship/etc)
+//   ETA date
+//   Weight (# Pounds)
+// ============================================================================
+
+function extractCovoyaOrders(emailBody, pdfText, subject) {
+  var orders = [];
+  var allText = (emailBody || '') + '\n' + (pdfText || '');
+
+  // --- Receiver ---
+  var receiver = 'Covoya Specialty Coffee';
+  var recvMatch = allText.match(/(?:send|forward)\s+(?:the\s+)?(?:below|above|following)\s+to\s+([A-Za-z][A-Za-z\s&',\.]+?)(?:\s*:|$)/im);
+  if (recvMatch) receiver = recvMatch[1].trim();
+
+  // --- Reference / PO ---
+  var poMatch = (subject || '').match(/\bP(\d{5,7})\b/i) || allText.match(/\bPO\s*[#:]?\s*P?(\d{5,7})\b/i);
+  var poNumber = poMatch ? 'P' + poMatch[1] : '';
+
+  // --- Sender from email signature ---
+  var sender = '';
+  var senderMatch = allText.match(/(?:Regards|Thanks|Thank you)[,!]?\s*\n\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/i);
+  if (senderMatch) sender = senderMatch[1].trim();
+
+  // --- Shipping ---
+  var shipping = extractShipping(allText, emailBody) || 'FedEx';
+
+  // --- Split email body into lines and find sample blocks ---
+  var lines = (emailBody || '').split(/\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
+
+  // Find blocks that start with a line-item ref like P614412-3
+  var lineRefPattern = /^P\d{5,7}-\d{1,3}$/;
+  var blockStarts = [];
+  for (var i = 0; i < lines.length; i++) {
+    if (lineRefPattern.test(lines[i])) {
+      blockStarts.push(i);
+    }
+  }
+
+  if (blockStarts.length === 0) {
+    // Fallback: try to find cargo numbers as block markers
+    var cargoPattern = /^C\d{5,7}$/;
+    for (var ci = 0; ci < lines.length; ci++) {
+      if (cargoPattern.test(lines[ci])) blockStarts.push(ci);
+    }
+  }
+
+  for (var b = 0; b < blockStarts.length; b++) {
+    var start = blockStarts[b];
+    var end = (b + 1 < blockStarts.length) ? blockStarts[b + 1] : Math.min(start + 12, lines.length);
+    var block = lines.slice(start, end);
+
+    var order = {
+      client: 'Covoya Specialty Coffee',
+      receiver: receiver,
+      shipping: shipping,
+      warehouse: 'Continental',
+      sampleOrderNum: poNumber,
+      container: '',
+      mark: '',
+      cargo: '',
+      reference: poNumber,
+      description: '',
+      bags: '',
+      sampleSize: '2 lb',
+      comments: '',
+      origin: '',
+      fedexAccount: ''
+    };
+
+    // Parse each line in the block
+    for (var j = 0; j < block.length; j++) {
+      var line = block[j];
+
+      // Container: 4 letters + 7 digits
+      if (/^[A-Z]{4}\d{7}$/.test(line) && !order.container) {
+        order.container = line;
+        continue;
+      }
+
+      // Cargo: C + 5-7 digits
+      if (/^C\d{5,7}$/.test(line) && !order.cargo) {
+        order.cargo = line;
+        continue;
+      }
+
+      // Mark: digits/digits/alphanumeric (e.g. 166/43/NM9)
+      if (/^\d{1,4}\s*[\/]\s*\d{1,5}\s*[\/]\s*[A-Za-z0-9]+$/.test(line) && !order.mark) {
+        order.mark = line.replace(/\s+/g, '');
+        order.origin = getOriginFromMark(order.mark);
+        continue;
+      }
+
+      // Weight: number + Pounds/Lbs/lb
+      var weightMatch = line.match(/^(\d+)\s*(?:Pounds?|Lbs?|lb)$/i);
+      if (weightMatch) {
+        order.sampleSize = weightMatch[1] + ' lb';
+        continue;
+      }
+
+      // Line item ref: P######-#
+      if (lineRefPattern.test(line)) {
+        continue;
+      }
+
+      // Warehouse detection
+      if (/continental|rpm|intermodal|greenpoint|nj\s*warehouse/i.test(line)) {
+        order.warehouse = detectWarehouse(line) || order.warehouse;
+        continue;
+      }
+
+      // Type indicator (Arrival, Pre-ship, etc) — skip
+      if (/^(?:Arrival|Pre[- ]?ship|Spot|Stock|Afloat)$/i.test(line)) {
+        continue;
+      }
+
+      // Date line (20-Feb, Feb 20, etc) — skip
+      if (/^\d{1,2}[-\/][A-Za-z]{3,9}$/.test(line) || /^[A-Za-z]{3,9}[-\/]\d{1,2}$/.test(line)) {
+        continue;
+      }
+
+      // Country name (single or two words, all-caps or title case)
+      if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}$/.test(line) && line.length < 30 && !order.description) {
+        // Could be origin country — only set if no description yet
+        if (!order.origin) order.origin = line;
+        continue;
+      }
+
+      // Description: the longest remaining line with actual coffee info
+      if (line.length > 15 && !order.description &&
+          !/^(?:CONTINENTAL|RPM|GREENPOINT|INTERMODAL)/i.test(line) &&
+          !/terminal$/i.test(line)) {
+        order.description = line;
+        continue;
+      }
+    }
+
+    // If no description, use origin
+    if (!order.description && order.origin) {
+      order.description = order.origin;
+    }
+
+    orders.push(order);
+  }
+
+  // --- Backfill shared container across all samples ---
+  // Covoya often has one container for all cargos
+  var sharedContainer = '';
+  for (var sc = 0; sc < orders.length; sc++) {
+    if (orders[sc].container) { sharedContainer = orders[sc].container; break; }
+  }
+  if (sharedContainer) {
+    for (var fc = 0; fc < orders.length; fc++) {
+      if (!orders[fc].container) orders[fc].container = sharedContainer;
+    }
+  }
+
+  // --- Duplicate for multiple receivers if needed ---
+  // Check for "and" in receiver (e.g. "Sopex and Reily")
+  var multiRecv = receiver.split(/\s+and\s+/i);
+  if (multiRecv.length > 1) {
+    var expanded = [];
+    for (var oi = 0; oi < orders.length; oi++) {
+      for (var ri = 0; ri < multiRecv.length; ri++) {
+        var clone = {};
+        for (var prop in orders[oi]) clone[prop] = orders[oi][prop];
+        clone.receiver = multiRecv[ri].trim();
+        expanded.push(clone);
+      }
+    }
+    orders = expanded;
   }
 
   return orders;

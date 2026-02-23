@@ -436,6 +436,9 @@
               document.getElementById('refreshTime').textContent = new Date().toLocaleString();
             }
           })
+          .withFailureHandler(function(err) {
+            console.log('Auto-refresh failed:', err);
+          })
           .getPortalData(portalToken);
       }
     }, 120000);

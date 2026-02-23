@@ -153,9 +153,10 @@
 
       var div = document.createElement('div');
       div.className = 'history-item ' + (ok ? 'ok' : 'fail');
-      div.innerHTML = '<span class="sample-id">' + id + '</span>' +
-                      '<span>' + (ok ? '✅' : '❌') + '</span>' +
-                      '<span class="time">' + time + '</span>';
+      var idSpan = document.createElement('span'); idSpan.className = 'sample-id'; idSpan.textContent = id;
+      var statusSpan = document.createElement('span'); statusSpan.textContent = ok ? '✅' : '❌';
+      var timeSpan = document.createElement('span'); timeSpan.className = 'time'; timeSpan.textContent = time;
+      div.appendChild(idSpan); div.appendChild(statusSpan); div.appendChild(timeSpan);
       list.insertBefore(div, list.firstChild);
     }
 

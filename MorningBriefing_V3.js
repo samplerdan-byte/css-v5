@@ -47,7 +47,7 @@ function setupMorningBriefing() {
   try {
     SpreadsheetApp.getUi().alert(
       '✅ Morning Briefing Scheduled!\n\n' +
-      'Daily at ' + BRIEFING_CONFIG.sendHour + '1:00 AM Eastern.\n' +
+      'Daily at ' + BRIEFING_CONFIG.sendHour + ':00 AM Eastern.\n' +
       'To: ' + BRIEFING_CONFIG.recipientEmail + '\n\n' +
       'Run "Send Briefing Now" to test.'
     );

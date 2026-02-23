@@ -237,15 +237,22 @@ function refreshDashboard() {
     .setFontSize(9).setFontColor('#888').setHorizontalAlignment('center').setBackground('#f5f5f5');
   row += 2;
 
-  // ── TODAY'S SUMMARY ──
-  row = _dashSection(dashSheet, row, "TODAY'S SUMMARY");
+  // ── ORDER PIPELINE (all time) ──
+  row = _dashSection(dashSheet, row, '📦 ORDER PIPELINE');
+  row = _dashCard(dashSheet, row, 2, 'Total Orders', metrics.total);
+  _dashCard(dashSheet, row - 1, 5, 'Awaiting Scan-In', metrics.pendingNotScanned);
+  _dashCard(dashSheet, row - 1, 8, 'Scanned / In Progress', metrics.inProgress);
+  row++;
+  row = _dashCard(dashSheet, row, 2, 'Shipped', metrics.shipped);
+  _dashCard(dashSheet, row - 1, 5, 'Completed', metrics.completed);
+  _dashCard(dashSheet, row - 1, 8, 'Unbilled Samples', metrics.unbilledCount);
+  row++;
+
+  // ── TODAY'S ACTIVITY ──
+  row = _dashSection(dashSheet, row, "📅 TODAY'S ACTIVITY");
   row = _dashCard(dashSheet, row, 2, 'Received Today', metrics.receivedToday);
   _dashCard(dashSheet, row - 1, 5, 'Scanned Today', metrics.scannedToday);
   _dashCard(dashSheet, row - 1, 8, 'Shipped Today', metrics.shippedToday);
-  row++;
-  row = _dashCard(dashSheet, row, 2, 'Pending (Not Scanned)', metrics.pendingNotScanned);
-  _dashCard(dashSheet, row - 1, 5, 'In Progress', metrics.inProgress);
-  _dashCard(dashSheet, row - 1, 8, 'Unbilled Samples', metrics.unbilledCount);
   row++;
 
   // ── ALERTS ──
@@ -324,15 +331,24 @@ function refreshDashboard() {
 
   // ── BILLING SNAPSHOT ──
   row = _dashSection(dashSheet, row, '💰 BILLING SNAPSHOT');
-  row = _dashCard(dashSheet, row, 2, 'Draft Invoices', billingStats.draft + ' ($' + billingStats.draftAmt.toFixed(0) + ')');
-  _dashCard(dashSheet, row - 1, 5, 'Sent / Awaiting', billingStats.sent + ' ($' + billingStats.sentAmt.toFixed(0) + ')');
-  var odColor = billingStats.overdue > 0 ? DASH_CONFIG.alertCriticalBg : '#fff';
-  var odFont = billingStats.overdue > 0 ? DASH_CONFIG.alertCriticalFont : '#333';
-  _dashCard(dashSheet, row - 1, 8, 'Overdue', billingStats.overdue + ' ($' + billingStats.overdueAmt.toFixed(0) + ')', odColor, odFont);
-  row++;
-  row = _dashCard(dashSheet, row, 2, 'Paid (all time)', billingStats.paid + ' ($' + billingStats.paidAmt.toFixed(0) + ')');
-  _dashCard(dashSheet, row - 1, 5, 'Unbilled Samples', metrics.unbilledCount);
-  row++;
+  if (!invSheet) {
+    dashSheet.getRange(row, 2, 1, 8).merge()
+      .setValue('No invoices yet — run Billing → Setup Billing to get started')
+      .setFontSize(10).setFontColor('#888').setFontStyle('italic');
+    row++;
+    row = _dashCard(dashSheet, row, 2, 'Unbilled Samples', metrics.unbilledCount);
+    row++;
+  } else {
+    row = _dashCard(dashSheet, row, 2, 'Draft Invoices', billingStats.draft + ' ($' + billingStats.draftAmt.toFixed(0) + ')');
+    _dashCard(dashSheet, row - 1, 5, 'Sent / Awaiting', billingStats.sent + ' ($' + billingStats.sentAmt.toFixed(0) + ')');
+    var odColor = billingStats.overdue > 0 ? DASH_CONFIG.alertCriticalBg : '#fff';
+    var odFont = billingStats.overdue > 0 ? DASH_CONFIG.alertCriticalFont : '#333';
+    _dashCard(dashSheet, row - 1, 8, 'Overdue', billingStats.overdue + ' ($' + billingStats.overdueAmt.toFixed(0) + ')', odColor, odFont);
+    row++;
+    row = _dashCard(dashSheet, row, 2, 'Paid (all time)', billingStats.paid + ' ($' + billingStats.paidAmt.toFixed(0) + ')');
+    _dashCard(dashSheet, row - 1, 5, 'Unbilled Samples', metrics.unbilledCount);
+    row++;
+  }
 
   // ── STATUS BREAKDOWN ──
   row = _dashSection(dashSheet, row, '📋 STATUS BREAKDOWN');
@@ -370,6 +386,9 @@ function refreshDashboard() {
     }
   }
 
+  // Append trend data to same dashboard
+  try { generateTrendData(); } catch(e) { Logger.log('Trend data error: ' + e); }
+
   // Protect the dashboard
   try {
     var protection = dashSheet.protect().setDescription('Dashboard — auto-generated');
@@ -405,7 +424,7 @@ function _gatherDashData(sheet, results) {
       receiver: String(data[i][col['Receiver']] || '').trim(),
       warehouse: String(data[i][col['Warehouse']] || '').trim(),
       container: String(data[i][col['Container #']] || '').trim(),
-      receivedDate: col['Received Date'] !== undefined ? data[i][col['Received Date']] : null,
+      receivedDate: col['Received Date'] !== undefined ? data[i][col['Received Date']] : (col['Timestamp'] !== undefined ? data[i][col['Timestamp']] : null),
       scannedDate: col['Scanned Date'] !== undefined ? data[i][col['Scanned Date']] : (col['Scan In Date'] !== undefined ? data[i][col['Scan In Date']] : null),
       shippedDate: col['Shipped Date'] !== undefined ? data[i][col['Shipped Date']] : (col['Ship Date'] !== undefined ? data[i][col['Ship Date']] : null)
     });
@@ -444,3 +463,310 @@ function _dashCard(sheet, row, col, label, value, bgColor, fontColor) {
   sheet.setRowHeight(row, 36);
   return row + 1;
 }
+
+
+// ============================================================
+// 📈 TREND DATA — Generates historical trend datasets
+// ============================================================
+
+function generateTrendData() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
+  var completedSheet = ss.getSheetByName(CONFIG.completedOrdersSheetName || 'Completed Orders');
+
+  if (!mainSheet) {
+    try { SpreadsheetApp.getUi().alert('No "All Orders" sheet found. Run Setup first.'); } catch(e) {}
+    return;
+  }
+
+  // Gather all order data
+  var allOrders = [];
+  _gatherTrendData(mainSheet, allOrders);
+  _gatherTrendData(completedSheet, allOrders);
+
+  if (allOrders.length === 0) {
+    try { SpreadsheetApp.getUi().alert('No orders found to analyze.'); } catch(e) {}
+    return;
+  }
+
+  allOrders.sort(function(a, b) { return a.date - b.date; });
+
+  var now = new Date();
+  var tz = Session.getScriptTimeZone();
+
+  // Build buckets
+  var monthlyData = {};
+  var clientTotals = {};
+  var originTotals = {};
+  var receiverTotals = {};
+  var warehouseTotals = {};
+
+  for (var i = 0; i < allOrders.length; i++) {
+    var o = allOrders[i];
+    if (!o.date || isNaN(o.date.getTime())) continue;
+
+    var monthKey = Utilities.formatDate(o.date, tz, 'yyyy-MM');
+    if (!monthlyData[monthKey]) monthlyData[monthKey] = { received: 0, shipped: 0, clients: {}, origins: {}, turnarounds: [] };
+
+    monthlyData[monthKey].received++;
+
+    if (o.shippedDate && !isNaN(o.shippedDate.getTime())) {
+      var shipMonth = Utilities.formatDate(o.shippedDate, tz, 'yyyy-MM');
+      if (!monthlyData[shipMonth]) monthlyData[shipMonth] = { received: 0, shipped: 0, clients: {}, origins: {}, turnarounds: [] };
+      monthlyData[shipMonth].shipped++;
+      var turnHrs = (o.shippedDate - o.date) / 3600000;
+      if (turnHrs > 0 && turnHrs < 720) monthlyData[monthKey].turnarounds.push(turnHrs);
+    }
+
+    var client = o.sender || 'Unknown';
+    if (!monthlyData[monthKey].clients[client]) monthlyData[monthKey].clients[client] = 0;
+    monthlyData[monthKey].clients[client]++;
+    if (!clientTotals[client]) clientTotals[client] = 0;
+    clientTotals[client]++;
+
+    var origin = o.origin || 'Unknown';
+    if (!monthlyData[monthKey].origins[origin]) monthlyData[monthKey].origins[origin] = 0;
+    monthlyData[monthKey].origins[origin]++;
+    if (!originTotals[origin]) originTotals[origin] = 0;
+    originTotals[origin]++;
+
+    var wh = o.warehouse || 'Unknown';
+    if (!warehouseTotals[wh]) warehouseTotals[wh] = 0;
+    warehouseTotals[wh]++;
+
+    var recv = o.receiver || 'Unknown';
+    if (!receiverTotals[recv]) receiverTotals[recv] = 0;
+    receiverTotals[recv]++;
+  }
+
+  var monthKeys = Object.keys(monthlyData).sort();
+  var topClients = Object.keys(clientTotals).sort(function(a, b) { return clientTotals[b] - clientTotals[a]; }).slice(0, 15);
+  var topOrigins = Object.keys(originTotals).sort(function(a, b) { return originTotals[b] - originTotals[a]; }).slice(0, 15);
+  var topReceivers = Object.keys(receiverTotals).sort(function(a, b) { return receiverTotals[b] - receiverTotals[a]; }).slice(0, 15);
+  var whSorted = Object.keys(warehouseTotals).sort(function(a, b) { return warehouseTotals[b] - warehouseTotals[a]; });
+
+  // All turnarounds for overall avg
+  var allTurnarounds = [];
+  for (var mk = 0; mk < monthKeys.length; mk++) {
+    allTurnarounds = allTurnarounds.concat(monthlyData[monthKeys[mk]].turnarounds);
+  }
+  var overallAvgTurn = 0;
+  if (allTurnarounds.length > 0) {
+    var tSum = 0;
+    for (var at = 0; at < allTurnarounds.length; at++) tSum += allTurnarounds[at];
+    overallAvgTurn = Math.round(tSum / allTurnarounds.length * 10) / 10;
+  }
+
+  var firstDate = allOrders[0].date;
+  var lastDate = allOrders[allOrders.length - 1].date;
+
+  // ── Write to the EXISTING Dashboard sheet (append after refreshDashboard content) ──
+  var dashSheet = ss.getSheetByName(DASH_CONFIG.sheetName);
+  if (!dashSheet) dashSheet = ss.insertSheet(DASH_CONFIG.sheetName);
+
+  // Find where to start — after existing dashboard content
+  var row = dashSheet.getLastRow() + 2;
+
+  // ── TREND ANALYSIS HEADER ──
+  dashSheet.getRange(row, 1, 1, 9).merge().setValue('📈 TREND ANALYSIS')
+    .setFontSize(16).setFontWeight('bold').setFontColor('#fff').setBackground('#2E5339').setHorizontalAlignment('center');
+  row++;
+  dashSheet.getRange(row, 1, 1, 9).merge()
+    .setValue('Data range: ' + Utilities.formatDate(firstDate, tz, 'MMM dd, yyyy') + ' → ' +
+      Utilities.formatDate(lastDate, tz, 'MMM dd, yyyy') + ' | ' + allOrders.length + ' orders analyzed')
+    .setFontSize(9).setFontColor('#888').setHorizontalAlignment('center').setBackground('#f5f5f5');
+  row += 2;
+
+  // ── KEY METRICS ROW ──
+  row = _dashSection(dashSheet, row, '📊 KEY METRICS');
+  row = _dashCard(dashSheet, row, 2, 'Avg Orders / Month', Math.round(allOrders.length / (monthKeys.length || 1) * 10) / 10);
+  _dashCard(dashSheet, row - 1, 5, 'Avg Turnaround', overallAvgTurn ? overallAvgTurn + ' hrs' : 'N/A');
+  _dashCard(dashSheet, row - 1, 8, 'Unique Clients', Object.keys(clientTotals).length);
+  row++;
+  row = _dashCard(dashSheet, row, 2, 'Unique Receivers', Object.keys(receiverTotals).length);
+  _dashCard(dashSheet, row - 1, 5, 'Unique Origins', Object.keys(originTotals).length);
+  _dashCard(dashSheet, row - 1, 8, 'Total Months', monthKeys.length);
+  row++;
+
+  // ── MONTHLY VOLUME TABLE ──
+  row = _dashSection(dashSheet, row, '📅 MONTHLY VOLUME');
+  dashSheet.getRange(row, 2).setValue('Month').setFontWeight('bold').setFontSize(9);
+  dashSheet.getRange(row, 3).setValue('Received').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 5).setValue('Shipped').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 6).setValue('Backlog').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 8).setValue('Avg Turn (hrs)').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 2, 1, 8).setBackground('#E8F5E9');
+  row++;
+
+  var monthBacklog = 0;
+  for (var m = 0; m < monthKeys.length; m++) {
+    var md = monthlyData[monthKeys[m]];
+    monthBacklog += md.received - md.shipped;
+    var mAvgTurn = 0;
+    if (md.turnarounds.length > 0) {
+      var mTurnSum = 0;
+      for (var mt = 0; mt < md.turnarounds.length; mt++) mTurnSum += md.turnarounds[mt];
+      mAvgTurn = Math.round(mTurnSum / md.turnarounds.length * 10) / 10;
+    }
+    dashSheet.getRange(row, 2).setValue(monthKeys[m]).setFontSize(10);
+    dashSheet.getRange(row, 3).setValue(md.received).setHorizontalAlignment('right').setFontSize(10);
+    dashSheet.getRange(row, 5).setValue(md.shipped).setHorizontalAlignment('right').setFontSize(10);
+    dashSheet.getRange(row, 6).setValue(monthBacklog).setHorizontalAlignment('right').setFontSize(10);
+    dashSheet.getRange(row, 8).setValue(mAvgTurn || '').setHorizontalAlignment('right').setFontSize(10);
+    if (m % 2 === 0) dashSheet.getRange(row, 2, 1, 8).setBackground('#fafafa');
+    row++;
+  }
+  row++;
+
+  // ── TOP CLIENTS ──
+  row = _dashSection(dashSheet, row, '👤 TOP CLIENTS (All Time)');
+  dashSheet.getRange(row, 2).setValue('Client').setFontWeight('bold').setFontSize(9);
+  dashSheet.getRange(row, 3).setValue('Orders').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 5).setValue('% of Total').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 2, 1, 8).setBackground('#E8F5E9');
+  row++;
+  for (var tc = 0; tc < topClients.length; tc++) {
+    var pct = (clientTotals[topClients[tc]] / allOrders.length * 100).toFixed(1);
+    dashSheet.getRange(row, 2).setValue(topClients[tc]).setFontSize(10);
+    dashSheet.getRange(row, 3).setValue(clientTotals[topClients[tc]]).setHorizontalAlignment('right').setFontSize(10).setFontWeight('bold');
+    dashSheet.getRange(row, 5).setValue(pct + '%').setHorizontalAlignment('right').setFontSize(10);
+    if (tc % 2 === 0) dashSheet.getRange(row, 2, 1, 8).setBackground('#fafafa');
+    row++;
+  }
+  row++;
+
+  // ── TOP ORIGINS ──
+  row = _dashSection(dashSheet, row, '🌍 TOP ORIGINS (All Time)');
+  dashSheet.getRange(row, 2).setValue('Origin').setFontWeight('bold').setFontSize(9);
+  dashSheet.getRange(row, 3).setValue('Orders').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 5).setValue('% of Total').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 2, 1, 8).setBackground('#E8F5E9');
+  row++;
+  for (var to2 = 0; to2 < topOrigins.length; to2++) {
+    var oPct = (originTotals[topOrigins[to2]] / allOrders.length * 100).toFixed(1);
+    dashSheet.getRange(row, 2).setValue(topOrigins[to2]).setFontSize(10);
+    dashSheet.getRange(row, 3).setValue(originTotals[topOrigins[to2]]).setHorizontalAlignment('right').setFontSize(10).setFontWeight('bold');
+    dashSheet.getRange(row, 5).setValue(oPct + '%').setHorizontalAlignment('right').setFontSize(10);
+    if (to2 % 2 === 0) dashSheet.getRange(row, 2, 1, 8).setBackground('#fafafa');
+    row++;
+  }
+  row++;
+
+  // ── TOP RECEIVERS ──
+  row = _dashSection(dashSheet, row, '📦 TOP RECEIVERS (All Time)');
+  dashSheet.getRange(row, 2).setValue('Receiver').setFontWeight('bold').setFontSize(9);
+  dashSheet.getRange(row, 3).setValue('Orders').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 5).setValue('% of Total').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 2, 1, 8).setBackground('#E8F5E9');
+  row++;
+  for (var tr2 = 0; tr2 < topReceivers.length; tr2++) {
+    var rPct = (receiverTotals[topReceivers[tr2]] / allOrders.length * 100).toFixed(1);
+    dashSheet.getRange(row, 2).setValue(topReceivers[tr2]).setFontSize(10);
+    dashSheet.getRange(row, 3).setValue(receiverTotals[topReceivers[tr2]]).setHorizontalAlignment('right').setFontSize(10).setFontWeight('bold');
+    dashSheet.getRange(row, 5).setValue(rPct + '%').setHorizontalAlignment('right').setFontSize(10);
+    if (tr2 % 2 === 0) dashSheet.getRange(row, 2, 1, 8).setBackground('#fafafa');
+    row++;
+  }
+  row++;
+
+  // ── WAREHOUSE BREAKDOWN ──
+  row = _dashSection(dashSheet, row, '🏭 WAREHOUSE BREAKDOWN (All Time)');
+  dashSheet.getRange(row, 2).setValue('Warehouse').setFontWeight('bold').setFontSize(9);
+  dashSheet.getRange(row, 3).setValue('Orders').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 5).setValue('% of Total').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+  dashSheet.getRange(row, 2, 1, 8).setBackground('#E8F5E9');
+  row++;
+  for (var ww = 0; ww < whSorted.length; ww++) {
+    var wPct = (warehouseTotals[whSorted[ww]] / allOrders.length * 100).toFixed(1);
+    dashSheet.getRange(row, 2).setValue(whSorted[ww]).setFontSize(10);
+    dashSheet.getRange(row, 3).setValue(warehouseTotals[whSorted[ww]]).setHorizontalAlignment('right').setFontSize(10).setFontWeight('bold');
+    dashSheet.getRange(row, 5).setValue(wPct + '%').setHorizontalAlignment('right').setFontSize(10);
+    if (ww % 2 === 0) dashSheet.getRange(row, 2, 1, 8).setBackground('#fafafa');
+    row++;
+  }
+
+  // ── Clean up old Trends tabs ──
+  var oldTabs = ['Trends - Weekly', 'Trends - Monthly', 'Trends - By Client', 'Trends - By Origin', 'Trends - Summary'];
+  for (var dt = 0; dt < oldTabs.length; dt++) {
+    var oldSheet = ss.getSheetByName(oldTabs[dt]);
+    if (oldSheet) {
+      try { ss.deleteSheet(oldSheet); } catch(e) {}
+    }
+  }
+
+  Logger.log('Trend data written to Dashboard tab. Orders: ' + allOrders.length);
+}
+
+
+// ============================================================
+// HELPER: Gather extended order data for trends
+// ============================================================
+
+function _gatherTrendData(sheet, results) {
+  if (!sheet || sheet.getLastRow() < 2) return;
+  var col = _getColumnMap(sheet);
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+
+  // Determine date column — try Timestamp, then Received Date
+  var dateCol = col['Timestamp'];
+  if (dateCol === undefined) dateCol = col['Received Date'];
+  if (dateCol === undefined) return;
+
+  var descCol = col['Description'];
+  var markCol = col['Mark #'];
+
+  for (var i = 0; i < data.length; i++) {
+    var csOrder = String(data[i][col['CS Order #']] || '').trim();
+    var csSample = col['CS Sample #'] !== undefined ? String(data[i][col['CS Sample #']] || '').trim() : '';
+    if (!csOrder && !csSample) continue; // skip empty
+
+    var rawDate = data[i][dateCol];
+    var date = null;
+    if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+      date = rawDate;
+    } else if (rawDate) {
+      date = new Date(rawDate);
+      if (isNaN(date.getTime())) date = null;
+    }
+
+    var shippedRaw = col['Shipped Date'] !== undefined ? data[i][col['Shipped Date']] : null;
+    var shippedDate = null;
+    if (shippedRaw instanceof Date && !isNaN(shippedRaw.getTime())) {
+      shippedDate = shippedRaw;
+    } else if (shippedRaw) {
+      shippedDate = new Date(shippedRaw);
+      if (isNaN(shippedDate.getTime())) shippedDate = null;
+    }
+
+    // Extract origin from Description or Mark
+    var origin = '';
+    if (descCol !== undefined) {
+      var desc = String(data[i][descCol] || '');
+      var originMatch = desc.match(/\b(Colombia|Brazil|Peru|Honduras|Guatemala|Costa Rica|Mexico|Ethiopia|Kenya|Rwanda|Burundi|Indonesia|Vietnam|India|Uganda|Tanzania|Nicaragua|El Salvador|Ecuador|Bolivia|PNG|Papua New Guinea|Dominican Republic|Haiti|Jamaica|Congo|Cameroon|Ivory Coast|Sumatra|Java|Sulawesi)\b/i);
+      if (originMatch) origin = originMatch[1];
+    }
+    if (!origin && markCol !== undefined) {
+      var mark = String(data[i][markCol] || '');
+      if (typeof getOriginFromMark === 'function' && mark) {
+        try { origin = getOriginFromMark(mark) || ''; } catch(e) {}
+      }
+    }
+    if (!origin) origin = 'Unknown';
+
+    results.push({
+      date: date,
+      sender: col['Sender'] !== undefined ? String(data[i][col['Sender']] || '').trim() : 'Unknown',
+      receiver: col['Receiver'] !== undefined ? String(data[i][col['Receiver']] || '').trim() : 'Unknown',
+      warehouse: col['Warehouse'] !== undefined ? String(data[i][col['Warehouse']] || '').trim() : 'Unknown',
+      status: col['Status'] !== undefined ? String(data[i][col['Status']] || '').trim() : '',
+      origin: origin,
+      shippedDate: shippedDate,
+      container: col['Container #'] !== undefined ? String(data[i][col['Container #']] || '').trim() : ''
+    });
+  }
+}
+
+
+// Dead functions removed Feb 2026:
+// _getWeekKey, _getOrCreateSheet, _addTrendChart, _addStackedChart
+// (were from old separate-sheet trend system, never called after consolidation)

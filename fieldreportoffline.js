@@ -101,6 +101,7 @@ function generateOfflineFieldReport() {
     'var REPORT_DATA = ' + dataJson + ';\n' +
     'var PERMS = ' + permsJson + ';\n' +
     'var SYNC_URL = ' + JSON.stringify(syncUrl) + ';\n' +
+    'var SYNC_TOKEN = ' + JSON.stringify(PropertiesService.getScriptProperties().getProperty('WEBAPP_ACTION_TOKEN') || '') + ';\n' +
     'var REPORT_ID = ' + JSON.stringify(reportId) + ';\n' +
     'var REPORT_DATE = ' + JSON.stringify(dateStr) + ';\n' +
     '\n' +
@@ -192,7 +193,7 @@ function generateOfflineFieldReport() {
     '  fetch(SYNC_URL, {\n' +
     '    method: "POST",\n' +
     '    headers: { "Content-Type": "text/plain;charset=utf-8" },\n' +
-    '    body: JSON.stringify({ action: "syncFieldReport", edits: pendingEdits })\n' +
+    '    body: JSON.stringify({ action: "syncFieldReport", token: SYNC_TOKEN, edits: pendingEdits })\n' +
     '  }).then(function(resp) {\n' +
     '    if (resp.ok) {\n' +
     '      return resp.json().then(function(data) {\n' +
@@ -501,6 +502,14 @@ function importOfflineEdits(jsonStr) {
 function doPost(e) {
   try {
     var payload = JSON.parse(e.postData.contents);
+
+    // Auth check — require token for all POST actions
+    var token = payload.token || '';
+    var expectedToken = PropertiesService.getScriptProperties().getProperty('WEBAPP_ACTION_TOKEN');
+    if (!expectedToken || token !== expectedToken) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Unauthorized' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 
     if (payload.action === 'syncFieldReport' && Array.isArray(payload.edits)) {
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.mainSheetName);

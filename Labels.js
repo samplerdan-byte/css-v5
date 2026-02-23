@@ -515,19 +515,22 @@ function printCheckedSamples() {
       samples.push({
         row: i + 1,
         sheet: sheetName,
-        csSample: data[i][col['CS Sample']] || data[i][col['CS#']] || '',
-        container: data[i][col['Container']] || '',
-        mark: data[i][col['Mark']] || '',
-        cargo: data[i][col['Cargo']] || data[i][col['Cargo#']] || '',
-        sender: data[i][col['Sender']] || data[i][col['From']] || '',
-        receiver: data[i][col['Receiver']] || data[i][col['To']] || '',
+        csOrder: data[i][col['CS Order #']] || '',
+        csSample: data[i][col['CS Sample #']] || '',
+        sender: data[i][col['Sender']] || '',
+        receiver: data[i][col['Receiver']] || '',
         warehouse: data[i][col['Warehouse']] || '',
-        bagCount: data[i][col['Bags']] || data[i][col['Bag Count']] || '',
-        shippingProcess: data[i][col['Shipping']] || data[i][col['Ship Method']] || '',
-        reference: data[i][col['Reference']] || '',
         description: data[i][col['Description']] || '',
-        sampleWeight: data[i][col['Sample Weight']] || data[i][col['Weight']] || '',
-        sampleOrderNum: data[i][col['Order']] || data[i][col['Order#']] || ''
+        sampleOrderNum: data[i][col['Sample Order #']] || '',
+        cargo: data[i][col['Cargo #']] || '',
+        mark: data[i][col['Mark #']] || '',
+        container: data[i][col['Container #']] || '',
+        reference: data[i][col['Reference']] || '',
+        bagCount: data[i][col['Bag Count']] || '',
+        weight: data[i][col['Weight']] || '',
+        sampleWeight: data[i][col['Sample Weight']] || '',
+        shippingProcess: data[i][col['Shipping Process']] || '',
+        comments: data[i][col['Comments']] || ''
       });
     }
   }
@@ -588,13 +591,13 @@ function generateLabels() {
   
   var col = _getColumnMap(sheet);
   const samples = [];
-  
+  var allRows = sheet.getRange(startRow, 1, numRows, sheet.getLastColumn()).getValues();
+
   for (let i = 0; i < numRows; i++) {
-    const rowNum = startRow + i;
-    const rowData = sheet.getRange(rowNum, 1, 1, sheet.getLastColumn()).getValues()[0];
-    
+    const rowData = allRows[i];
+
     samples.push({
-      row: rowNum,
+      row: startRow + i,
       sheet: sheet.getName(),
       csOrder: rowData[col['CS Order #']] || '',
       csSample: rowData[col['CS Sample #']] || '',

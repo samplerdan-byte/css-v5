@@ -7,9 +7,9 @@
 // ============================================================================
 
 var SHEET_NAMES = {
-  allOrders: 'All Orders',
-  liveOrders: 'Live Orders',
-  completedOrders: 'Completed Orders'
+  allOrders: (typeof CONFIG !== 'undefined' && CONFIG.mainSheetName) || 'All Orders',
+  liveOrders: (typeof CONFIG !== 'undefined' && CONFIG.liveOrdersSheetName) || 'Live Orders',
+  completedOrders: (typeof CONFIG !== 'undefined' && CONFIG.completedOrdersSheetName) || 'Completed Orders'
 };
 
 var SAMPLE_COLUMN_NAME = 'CS Sample #';
@@ -263,7 +263,10 @@ function scanOutShipBatch(items, cols) {
 // ============================================================
 
 function forceMoveSample(sampleId) {
+  var lock = LockService.getScriptLock();
   try {
+    if (!lock.tryLock(10000)) return { success: false, message: 'System busy — try again' };
+
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var liveSheet = ss.getSheetByName(SHEET_NAMES.liveOrders);
     var completedSheet = ss.getSheetByName(SHEET_NAMES.completedOrders);
@@ -287,39 +290,12 @@ function forceMoveSample(sampleId) {
     return { success: false, message: sampleId + ' not found in Live Orders' };
   } catch (e) {
     return { success: false, message: 'Error: ' + e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
-// ============================================================
-// SCAN-IN FUNCTIONS
-// ============================================================
-
-function scanSampleBarcode(barcode) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
-  if (!mainSheet) return { message: 'Main sheet not found!', success: false };
-
-  var col = _getColumnMap(mainSheet);
-  const lastRow = mainSheet.getLastRow();
-  const data = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn()).getValues();
-
-  let foundRow = -1;
-  for (let i = 0; i < data.length; i++) {
-    if (String(data[i][col['CS Sample #']]).trim() === String(barcode).trim()) {
-      foundRow = i + 2;
-      break;
-    }
-  }
-  if (foundRow === -1) return { message: 'Sample ' + barcode + ' not found!', success: false };
-
-  const now = new Date();
-  const user = Session.getActiveUser().getEmail();
-  mainSheet.getRange(foundRow, col['Status'] + 1).setValue(CONFIG.statusValues.SCANNED);
-  mainSheet.getRange(foundRow, col['Scanned Date'] + 1).setValue(now);
-  mainSheet.getRange(foundRow, col['Scanned By'] + 1).setValue(user);
-
-  return { message: '✓ Sample ' + barcode + ' marked as SCANNED', sample: barcode, status: 'Scanned', success: true };
-}
+// scanSampleBarcode() — moved to WebApp.js to avoid duplicates
 
 function openBarcodeScanner() {
   const html = HtmlService.createHtmlOutputFromFile('BarcodeScanner').setWidth(750).setHeight(600);
@@ -327,7 +303,7 @@ function openBarcodeScanner() {
 }
 
 function openWebScanner() {
-  const html = HtmlService.createHtmlOutputFromFile('WebScanner').setWidth(700).setHeight(700);
+  const html = HtmlService.createHtmlOutputFromFile('WebAppScanner').setWidth(700).setHeight(700);
   SpreadsheetApp.getUi().showModalDialog(html, '📱 QR/Barcode Scanner');
 }
 
@@ -355,18 +331,7 @@ function getTrackingUrl(tracking) {
   return null;
 }
 
-function buildQRDataString(data, csSampleNum) {
-  const parts = [
-    'ORDER:' + (data.sampleOrderNum || ''), 'CARGO:' + (data.cargo || ''),
-    'MARK:' + (data.mark || ''), 'CONTAINER:' + (data.container || ''),
-    'REF:' + (data.reference || ''), 'DESC:' + (data.description || ''),
-    'BAGS:' + (data.bagCount || ''), 'WEIGHT:' + (data.weight || ''),
-    'SAMPLE:' + (data.sampleWeight || ''), 'P:' + (data.pNumber || ''),
-    'S:' + (data.sNumber || ''), 'WAREHOUSE:' + (data.warehouse || ''),
-    'CS_SAMPLE:' + (csSampleNum || '')
-  ];
-  return parts.join('|');
-}
+// buildQRDataString() — moved to QRcode.js to avoid duplicates
 
 function autoPrintLabel(rowData, col) {
   Logger.log('Auto-print requested for sample: ' + rowData[col['CS Sample #']]);
