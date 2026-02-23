@@ -348,19 +348,32 @@ function learnFromCorrections() {
 //   addDataToSheet(sheet, sampleData, ...);
 // ============================================================
 
+// V5: perf — cache rules sheet data for the lifetime of the script execution.
+// applyCorrections() is called once per sample during email batch processing;
+// without a cache each call triggers a full sheet read (N reads → 1 read).
+var _rulesDataCache = null;
+
+function _getRulesDataCached() {
+  if (_rulesDataCache !== null) return _rulesDataCache;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var rulesSheet = ss.getSheetByName(LEARN_CONFIG.rulesSheetName);
+  if (!rulesSheet || rulesSheet.getLastRow() < 2) { _rulesDataCache = []; return _rulesDataCache; }
+  _rulesDataCache = rulesSheet.getRange(2, 1, rulesSheet.getLastRow() - 1, 8).getValues();
+  return _rulesDataCache;
+}
+
 function applyCorrections(sampleData, senderEmail) {
   try {
     Logger.log('applyCorrections: applying rules for sender: ' + senderEmail);
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var rulesSheet = ss.getSheetByName(LEARN_CONFIG.rulesSheetName);
-    if (!rulesSheet || rulesSheet.getLastRow() < 2) {
-      Logger.log('applyCorrections: no rules sheet or no rules found');
+
+    // V5: perf — read rules sheet once per execution via cache (N sheet reads → 1)
+    var rulesData = _getRulesDataCached();
+    if (!rulesData || rulesData.length === 0) {
+      Logger.log('applyCorrections: no rules found');
       return sampleData;
     }
 
     var senderPattern = _buildSenderPattern(senderEmail, sampleData.sender || '');
-
-    var rulesData = rulesSheet.getRange(2, 1, rulesSheet.getLastRow() - 1, 8).getValues();
     var applicableRules = [];
 
     for (var i = 0; i < rulesData.length; i++) {

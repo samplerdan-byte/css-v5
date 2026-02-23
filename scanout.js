@@ -75,7 +75,9 @@ function getClientIndex() {
       try {
         var d = new Date(allData[i][cols.shipDate]); d.setHours(0,0,0,0);
         if (d.getTime() === today.getTime()) shippedToday++;
-      } catch(e) {}
+      } catch(e) {
+        logError('getClientIndex', 'Error parsing shipped date', { date: allData[i][cols.shipDate], rowNum: i + 1, error: e.message });
+      }
     }
 
     var trackInfo = '';
@@ -84,7 +86,7 @@ function getClientIndex() {
     }
     var shipDateStr = '';
     if ((status === 'Shipped' || status === 'Completed') && cols.shipDate >= 0 && allData[i][cols.shipDate]) {
-      try { shipDateStr = Utilities.formatDate(new Date(allData[i][cols.shipDate]), Session.getScriptTimeZone(), 'MM/dd'); } catch(e) {}
+      try { shipDateStr = Utilities.formatDate(new Date(allData[i][cols.shipDate]), Session.getScriptTimeZone(), 'MM/dd'); } catch(e) { logError('getClientIndex', 'Error formatting ship date', { date: allData[i][cols.shipDate], rowNum: i + 1, error: e.message }); }
     }
 
     var orderId = cols.order >= 0 ? String(allData[i][cols.order]).trim() : '';
@@ -108,9 +110,13 @@ function getClientIndex() {
       try {
         var c = lookupCarrierByCompany(receiverNames[j]);
         if (c && (c.fedex || c.ups)) carriers[receiverNames[j]] = c;
-      } catch(e) {}
+      } catch(e) {
+        logError('getClientIndex', 'Error looking up carrier for receiver', { receiver: receiverNames[j], error: e.message });
+      }
     }
-  } catch(e) {}
+  } catch(e) {
+    logError('getClientIndex', 'Error building carrier lookup', { error: e.message });
+  }
 
   var liveSet = {};
   var liveSheet = ss.getSheetByName(SHEET_NAMES.liveOrders);
@@ -160,14 +166,18 @@ function _findRowBySample(sheet, sampleId) {
 function scanOutShip(row, cols, trackingNum) {
   // row param kept for backward compat but we don't trust it
   // We need the sample ID — get it from the sheet at that row as fallback
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { success: false, message: 'System busy — try again' };
+  }
   try {
     trackingNum = String(trackingNum).trim();
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.allOrders);
     if (!sheet) return { success: false, message: 'Sheet not found' };
-    
+
     row = parseInt(row, 10);
     if (!row || row < 2) return { success: false, message: 'Invalid row' };
-    
+
     // Read the sample ID at that row to verify
     var col = _getColumnMap(sheet);
     var sampleIdx = col['CS Sample #'];
@@ -175,14 +185,22 @@ function scanOutShip(row, cols, trackingNum) {
     var sampleId = String(sheet.getRange(row, sampleIdx + 1).getValue()).trim();
 
     if (!sampleId) return { success: false, message: 'No sample at row ' + row };
-    
+
     // Now find the ACTUAL current row for this sample
     var actualRow = _findRowBySample(sheet, sampleId);
     if (actualRow < 2) return { success: false, message: sampleId + ' not found in sheet' };
-    
-    if (cols.status >= 0)   sheet.getRange(actualRow, cols.status + 1).setValue('Shipped');
-    if (cols.shipDate >= 0) sheet.getRange(actualRow, cols.shipDate + 1).setValue(new Date());
-    
+
+    // V5: perf — batch status + shipDate into one setValues when columns are adjacent (2 API calls → 1)
+    var nowDate = new Date();
+    if (cols.status >= 0 && cols.shipDate >= 0 && Math.abs(cols.status - cols.shipDate) === 1) {
+      var leftCol = Math.min(cols.status, cols.shipDate) + 1;
+      var vals = cols.status < cols.shipDate ? [['Shipped', nowDate]] : [[nowDate, 'Shipped']];
+      sheet.getRange(actualRow, leftCol, 1, 2).setValues(vals);
+    } else {
+      if (cols.status >= 0)   sheet.getRange(actualRow, cols.status + 1).setValue('Shipped');
+      if (cols.shipDate >= 0) sheet.getRange(actualRow, cols.shipDate + 1).setValue(nowDate);
+    }
+
     if (cols.tracking >= 0) {
       var link = getTrackingUrl(trackingNum);
       if (link) {
@@ -191,12 +209,14 @@ function scanOutShip(row, cols, trackingNum) {
         sheet.getRange(actualRow, cols.tracking + 1).setValue(trackingNum);
       }
     }
-    
+
     SpreadsheetApp.flush();
     try { updateLiveOrdersView(); } catch(ignore) {}
     return { success: true };
   } catch (e) {
     return { success: false, message: 'Error: ' + e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -205,14 +225,18 @@ function scanOutShip(row, cols, trackingNum) {
 // ============================================================
 
 function scanOutShipBatch(items, cols) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { success: false, message: 'System busy — try again' };
+  }
   try {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.allOrders);
     if (!sheet) return { success: false, message: 'Sheet not found' };
-    
+
     var col = _getColumnMap(sheet);
     var sampleIdx = col['CS Sample #'];
     var lastRow = sheet.getLastRow();
-    
+
     if (lastRow < 2 || sampleIdx === undefined) {
       return { success: false, message: 'No data or sample column missing' };
     }
@@ -299,6 +323,8 @@ function scanOutShipBatch(items, cols) {
     return { success: true, results: results, shipped: results.filter(function(r) { return r.success; }).length };
   } catch(e) {
     return { success: false, message: 'Batch error: ' + e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -320,14 +346,49 @@ function forceMoveSample(sampleId) {
     var sampleCol = findSampleColumn(liveData[0]);
     if (sampleCol === -1) return { success: false, message: 'Sample column not found' };
 
+    // Get status column index from headers
+    var statusCol = liveData[0].indexOf('Status');
+
     sampleId = String(sampleId).trim();
 
     for (var i = liveData.length - 1; i >= 1; i--) {
       if (String(liveData[i][sampleCol]).trim() === sampleId) {
         var rowNum = i + 1;
         var rowData = liveSheet.getRange(rowNum, 1, 1, liveSheet.getLastColumn()).getValues()[0];
+
+        // Update status to Completed on the row before copying
+        if (statusCol >= 0) {
+          rowData[statusCol] = 'Completed';
+        }
+
         completedSheet.appendRow(rowData);
         liveSheet.deleteRow(rowNum);
+
+        // Also update status in All Orders (source of truth)
+        try {
+          var allSheet = ss.getSheetByName(SHEET_NAMES.allOrders);
+          if (allSheet) {
+            var allRow = _findRowBySample(allSheet, sampleId);
+            if (allRow >= 2) {
+              var allCol = _getColumnMap(allSheet);
+              if (allCol['Status'] !== undefined) {
+                allSheet.getRange(allRow, allCol['Status'] + 1).setValue('Completed');
+              }
+            }
+          }
+        } catch (allErr) {
+          Logger.log('forceMoveSample: All Orders status update failed (non-fatal): ' + allErr);
+        }
+
+        // Trigger auto-billing for the moved sample
+        try {
+          if (typeof _autoBillSamples === 'function') {
+            _autoBillSamples([rowData], ss);
+          }
+        } catch (billErr) {
+          Logger.log('forceMoveSample: Auto-bill failed (non-fatal): ' + billErr);
+        }
+
         return { success: true, message: sampleId + ' moved to Completed Orders' };
       }
     }

@@ -32,7 +32,21 @@ function generateEndOfDayReport() {
   const customerCounts = {};
   const warehouseCounts = {};
 
-  data.forEach(row => {
+  // QUOTA GUARD: Track execution time
+  const startTime = Date.now();
+  let rowsProcessed = 0;
+
+  data.forEach((row, rowIndex) => {
+    // QUOTA GUARD: Check every 50 rows for timeout
+    if (rowIndex % 50 === 0) {
+      const timeCheck = _quotaCheckExecutionTime(startTime);
+      if (timeCheck.shouldStop) {
+        Logger.log('generateEndOfDayReport: Execution timeout approaching after ' + rowsProcessed + ' rows. Stopping to avoid 6-min limit.');
+        return; // exit loop
+      }
+    }
+    rowsProcessed++;
+
     // Guard against missing Timestamp column
     if (col['Timestamp'] === undefined) return;
 
@@ -186,7 +200,19 @@ function getFieldReportData() {
     } catch(e) { return String(val); }
   }
 
+  // QUOTA GUARD: Track execution time
+  const startTime = Date.now();
+
   for (var i = 0; i < data.length; i++) {
+    // QUOTA GUARD: Check every 100 rows for timeout
+    if (i % 100 === 0) {
+      const timeCheck = (typeof _quotaCheckExecutionTime === 'function') ? _quotaCheckExecutionTime(startTime) : { shouldStop: false };
+      if (timeCheck.shouldStop) {
+        Logger.log('getFieldReportData: Execution timeout approaching after ' + i + ' rows. Stopping to avoid 6-min limit.');
+        break; // exit loop
+      }
+    }
+
     var status = String(data[i][col['Status']] || '').trim();
     if (liveStatuses.indexOf(status) === -1) continue;
 

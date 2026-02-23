@@ -72,7 +72,8 @@ function _getSamplesFromCache(removeAfter) {
     cacheEntry = JSON.parse(cached);
   } catch (e) {
     // Corrupted cache — remove it and treat as expired
-    try { cache.remove('samplesToPrint'); } catch(ignore) {}
+    logError('getSamplesToPrintCache', 'Corrupted cache entry, removing', { error: e.message });
+    try { cache.remove('samplesToPrint'); } catch(cleanupErr) { logError('getSamplesToPrintCache', 'Error removing corrupted cache', { error: cleanupErr.message }); }
     return null;
   }
 
@@ -505,8 +506,14 @@ function _build2x1(samples, hasCheckbox) {
 // ============================================================
 
 function clearPrintCheckboxesFromCache() {
-  var cache = CacheService.getUserCache();
-  var cached = cache.get('samplesToPrint');
+  var cache, cached;
+  try {
+    cache = CacheService.getUserCache();
+    cached = cache.get('samplesToPrint');
+  } catch (e) {
+    Logger.log('clearPrintCheckboxesFromCache: CacheService unavailable — ' + e.message);
+    return;
+  }
   if (!cached) return;
 
   var cacheEntry;
@@ -514,7 +521,7 @@ function clearPrintCheckboxesFromCache() {
     cacheEntry = JSON.parse(cached);
   } catch (e) {
     // Corrupted cache — just remove it
-    cache.remove('samplesToPrint');
+    try { cache.remove('samplesToPrint'); } catch (ignore) {}
     return;
   }
 
@@ -522,7 +529,7 @@ function clearPrintCheckboxesFromCache() {
   if (samples && samples.length > 0) {
     clearPrintCheckboxes(samples);
   }
-  cache.remove('samplesToPrint');
+  try { cache.remove('samplesToPrint'); } catch (ignore) {}
 }
 
 function clearPrintCheckboxes(samples) {

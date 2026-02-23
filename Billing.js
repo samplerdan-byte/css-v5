@@ -168,7 +168,7 @@ function setupBilling() {
     Logger.log('✓ Invoice Line Items sheet created');
   }
   
-  try { lockAllHeaders(); } catch(e) {}
+  try { lockAllHeaders(); } catch(e) { logError('setupBilling', 'Failed to lock headers', { error: e.message }); }
   
   ui.alert(
     '✅ Billing System Ready!\n\n' +
@@ -189,6 +189,8 @@ function setupBilling() {
 // ============================================================
 
 function _autoBillSamples(movedRows, ss) {
+  var lock = LockService.getScriptLock();
+  var lockAcquired = false;
   try {
     if (!movedRows || movedRows.length === 0) return;
 
@@ -204,7 +206,19 @@ function _autoBillSamples(movedRows, ss) {
     if (!completedSheet) return;
     var col = _getColumnMap(completedSheet);
 
-    // Build set of already-billed samples
+    // --- CRITICAL SECTION: lock to prevent duplicate invoice numbers ---
+    if (!lock.tryLock(30000)) {
+      Logger.log('_autoBillSamples: could not acquire lock — skipping');
+      if (typeof logError === 'function') {
+        logError('_autoBillSamples', 'Could not acquire lock — ' + movedRows.length + ' samples not billed. Run Billing → Generate Invoice manually.', {
+          sampleCount: movedRows.length
+        });
+      }
+      return;
+    }
+    lockAcquired = true;
+
+    // Build set of already-billed samples (inside lock to avoid TOCTOU)
     var billedSamples = {};
     if (liSheet.getLastRow() >= 2) {
       var billedData = liSheet.getRange(2, 5, liSheet.getLastRow() - 1, 1).getValues();
@@ -327,6 +341,10 @@ function _autoBillSamples(movedRows, ss) {
     Logger.log('Auto-billed ' + totalBilled + ' samples across ' + customerNames.length + ' invoice(s)');
   } catch (e) {
     Logger.log('Auto-bill error (non-fatal): ' + e);
+  } finally {
+    if (lockAcquired) {
+      try { lock.releaseLock(); } catch (ignore) {}
+    }
   }
 }
 
@@ -484,8 +502,20 @@ function generateInvoice() {
     var col = _getColumnMap(sheet);
     if (col['Status'] === undefined) return;
     var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
-    
+
+    // QUOTA GUARD: Track execution time
+    var startTime = Date.now();
+
     for (var i = 0; i < data.length; i++) {
+      // QUOTA GUARD: Check every 100 rows for timeout
+      if (i % 100 === 0) {
+        var timeCheck = (typeof _quotaCheckExecutionTime === 'function') ? _quotaCheckExecutionTime(startTime) : { shouldStop: false };
+        if (timeCheck.shouldStop) {
+          Logger.log('generateInvoice: Execution timeout approaching after ' + i + ' rows. Stopping to avoid 6-min limit.');
+          break;
+        }
+      }
+
       var status = String(data[i][col['Status']] || '').trim().toLowerCase();
       if (status !== 'shipped' && status !== 'completed') continue;
       
@@ -577,17 +607,26 @@ function generateInvoice() {
 // ============================================================
 
 function generateInvoicesForCustomers(customerList) {
+  var lock = LockService.getScriptLock();
+  var lockAcquired = false;
+  try {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var invSheet = ss.getSheetByName(BILLING_CONFIG.invoicesSheetName);
   var liSheet = ss.getSheetByName(BILLING_CONFIG.lineItemsSheetName);
-  
+
   if (!invSheet || !liSheet) return 'Error: Billing sheets not found. Run Setup Billing first.';
-  
+
   var rates = _loadRates();
-  
+
   var mainSheet = ss.getSheetByName(CONFIG.mainSheetName);
   var completedSheet = ss.getSheetByName(CONFIG.completedOrdersSheetName || 'Completed Orders');
-  
+
+  // --- CRITICAL SECTION: lock to prevent duplicate invoice numbers ---
+  if (!lock.tryLock(30000)) {
+    return 'Error: System busy — could not acquire lock. Try again in a moment.';
+  }
+  lockAcquired = true;
+
   var billedSamples = {};
   if (liSheet.getLastRow() >= 2) {
     var billedData = liSheet.getRange(2, 5, liSheet.getLastRow() - 1, 1).getValues();
@@ -724,6 +763,11 @@ function generateInvoicesForCustomers(customerList) {
   return '✅ Created ' + invoicesCreated + ' invoice(s) with ' + totalLineItems + ' line items.\n\n' +
     'View them in the "Invoices" and "Invoice Line Items" sheets.\n' +
     'Use Billing → Preview Invoice to review before sending.';
+  } finally {
+    if (lockAcquired) {
+      try { lock.releaseLock(); } catch (ignore) {}
+    }
+  }
 }
 
 
@@ -828,7 +872,10 @@ function _generateInvoiceHtml(invoiceNum) {
       var dt = new Date(d);
       return String(dt.getMonth() + 1).padStart(2, '0') + '/' +
         String(dt.getDate()).padStart(2, '0') + '/' + dt.getFullYear();
-    } catch(e) { return ''; }
+    } catch(e) {
+      logError('_generateInvoiceHtml::fmtDate', 'Date format error', { date: d, error: e.message });
+      return '';
+    }
   }
   
   function fmtMoney(n) {
@@ -947,7 +994,9 @@ function _getCustomerAddress(customerName) {
         return parts.join('<br>');
       }
     }
-  } catch(e) {}
+  } catch(e) {
+    logError('_getCustomerAddress', 'Error looking up customer address', { customer: customerName, error: e.message });
+  }
   return '';
 }
 
@@ -1247,8 +1296,14 @@ function _updateInvoiceStatus(newStatus) {
   if (row < 2) { ui.alert('Select an invoice row.'); return; }
   
   var col = _getColumnMap(sheet);
-  var invNum = String(sheet.getRange(row, col['Invoice #'] + 1).getValue());
-  var currentStatus = String(sheet.getRange(row, col['Status'] + 1).getValue());
+  // V5: perf — read both cells in one getValues() call instead of two getValue() calls (2 API calls → 1)
+  var invNumCol = col['Invoice #'] + 1;
+  var statusColNum = col['Status'] + 1;
+  var minCol = Math.min(invNumCol, statusColNum);
+  var maxCol = Math.max(invNumCol, statusColNum);
+  var rowVals = sheet.getRange(row, minCol, 1, maxCol - minCol + 1).getValues()[0];
+  var invNum = String(rowVals[invNumCol - minCol]);
+  var currentStatus = String(rowVals[statusColNum - minCol]);
   
   var resp = ui.alert(
     'Update Invoice Status',
@@ -1637,30 +1692,33 @@ function editLineItemService() {
   var rates = _loadRates();
   var codes = Object.keys(rates).sort();
   
-  var currentCode = String(sheet.getRange(row, 3).getValue()).trim();
+  // V5: perf — read invoice#, service code, and qty in one getValues call (3 getValue → 1 getValues)
+  // Columns: 1=Invoice#, 3=ServiceCode, 9=Qty (read cols 1-9 to cover all three)
+  var rowData = sheet.getRange(row, 1, 1, 9).getValues()[0];
+  var invNum = String(rowData[0]).trim();
+  var currentCode = String(rowData[2]).trim();
+  var qty = parseFloat(rowData[8]) || 1;
+
   var optionList = codes.map(function(c) {
     return c + ' — ' + rates[c].description + ' ($' + rates[c].rate.toFixed(2) + ')' + (c === currentCode ? ' ← current' : '');
   }).join('\n');
-  
+
   var resp = ui.prompt(
     'Change Service Code',
     'Current: ' + currentCode + '\n\nAvailable codes:\n' + optionList + '\n\nEnter new service code:',
     ui.ButtonSet.OK_CANCEL
   );
   if (resp.getSelectedButton() !== ui.Button.OK) return;
-  
+
   var newCode = resp.getResponseText().trim().toUpperCase();
   if (!rates[newCode]) { ui.alert('Invalid service code: ' + newCode); return; }
-  
+
   var rate = rates[newCode];
-  var qty = parseFloat(sheet.getRange(row, 9).getValue()) || 1;
-  
+
   var newUnitPrice = Math.round(rate.rate * 100) / 100;                // cents-safe
   var newLineTotal = Math.round(qty * newUnitPrice * 100) / 100;       // cents-safe
   sheet.getRange(row, 3, 1, 2).setValues([[newCode, rate.description]]);
   sheet.getRange(row, 10, 1, 3).setValues([[rate.unit, newUnitPrice, newLineTotal]]);
-  
-  var invNum = String(sheet.getRange(row, 1).getValue()).trim();
   _recalcInvoiceTotal(invNum);
   
   ui.alert('✅ Updated to ' + newCode + ' — ' + rate.description + ' ($' + rate.rate.toFixed(2) + ')');
@@ -1733,7 +1791,10 @@ function _fmtDateCSV(d) {
     var dt = new Date(d);
     return String(dt.getMonth() + 1).padStart(2, '0') + '/' +
       String(dt.getDate()).padStart(2, '0') + '/' + dt.getFullYear();
-  } catch(e) { return ''; }
+  } catch(e) {
+    logError('_fmtDateCSV', 'Date format error', { date: d, error: e.message });
+    return '';
+  }
 }
 
 function _fmtDateIIF(d) {

@@ -104,6 +104,7 @@ function processManualOrderEntry(orderData) {
       if (orderData.receiver.zip) addressStr += ' ' + orderData.receiver.zip;
     }
     
+    var failedSamples = [];
     for (const sample of orderData.samples) {
       const sampleData = {
         sampleOrderNum: orderData.orderNumber || '',
@@ -117,8 +118,8 @@ function processManualOrderEntry(orderData) {
         sampleWeight: orderData.sampleWeight || customer.defaultSampleSize || '2 LB',
         pNumber: sample.pNumber || '',
         sNumber: sample.sNumber || '',
-        warehouse: (typeof WAREHOUSES !== 'undefined' && WAREHOUSES[orderData.warehouse]) 
-          ? WAREHOUSES[orderData.warehouse].fullName 
+        warehouse: (typeof WAREHOUSES !== 'undefined' && WAREHOUSES[orderData.warehouse])
+          ? WAREHOUSES[orderData.warehouse].name
           : (orderData.warehouse || ''),
         sender: senderStr,
         receiver: receiverStr,
@@ -132,13 +133,26 @@ function processManualOrderEntry(orderData) {
         bol: orderData.bolNumber || '',
         shipStatus: orderData.shipStatus || ''
       };
-      
-      addDataToSheet(sheet, sampleData, { skipLiveUpdate: true, skipAutoPrint: true });
-      results.push(sample.cargo || sample.container || 'Sample');
+
+      try {
+        addDataToSheet(sheet, sampleData, { skipLiveUpdate: true, skipAutoPrint: true });
+        results.push(sample.cargo || sample.container || 'Sample');
+      } catch (sampleErr) {
+        Logger.log('processManualOrderEntry: failed to add sample ' + (results.length + failedSamples.length + 1) + ': ' + sampleErr);
+        failedSamples.push(sample.cargo || sample.container || 'Sample');
+      }
     }
-    
+
     // Single live update after all samples added (avoids re-triggering sidebar)
     try { updateLiveOrdersView(); } catch (e) { Logger.log('Live update after manual entry: ' + e); }
+
+    if (failedSamples.length > 0 && results.length > 0) {
+      Logger.log('processManualOrderEntry partial: ' + results.length + ' added, ' + failedSamples.length + ' failed');
+      return { success: true, message: '⚠️ Partial success: Added ' + results.length + ' sample(s): ' + results.join(', ') + '\nFailed: ' + failedSamples.join(', ') + ' — do NOT re-submit the entire order.' };
+    }
+    if (failedSamples.length > 0 && results.length === 0) {
+      return { success: false, message: 'All ' + failedSamples.length + ' sample(s) failed to save. Please try again.' };
+    }
 
     Logger.log('processManualOrderEntry success: added ' + results.length + ' sample(s)');
     return { success: true, message: '✅ Added ' + results.length + ' sample(s): ' + results.join(', ') };

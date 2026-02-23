@@ -185,6 +185,71 @@ function clearOldErrors(daysToKeep) {
 
 
 // ============================================================================
+// fetchWithRetry — Exponential backoff wrapper for UrlFetchApp.fetch()
+//
+// Retries on transient failures: HTTP 429, 500, 502, 503, 504, and network errors.
+// Does NOT retry on 4xx client errors (except 429) — those are permanent failures.
+//
+// Usage:
+//   var result = fetchWithRetry(url, options);   // returns UrlFetchApp response
+//   // throws on exhausted retries or non-retryable errors
+//
+// Parameters:
+//   url       {string}  The URL to fetch
+//   options   {Object}  UrlFetchApp options (must include muteHttpExceptions: true)
+//   maxTries  {number}  Max attempts, default 3
+//   context   {string}  Label for error logging (e.g. 'EasyPost POST /shipments')
+// ============================================================================
+
+function fetchWithRetry(url, options, maxTries, context) {
+  maxTries = maxTries || 3;
+  context = context || 'fetchWithRetry';
+
+  // Ensure muteHttpExceptions so we can inspect the status ourselves
+  options = options || {};
+  options.muteHttpExceptions = true;
+
+  var RETRYABLE_CODES = { 429: true, 500: true, 502: true, 503: true, 504: true };
+  var lastErr = null;
+
+  for (var attempt = 1; attempt <= maxTries; attempt++) {
+    try {
+      var response = UrlFetchApp.fetch(url, options);
+      var code = response.getResponseCode();
+
+      if (!RETRYABLE_CODES[code]) {
+        // Either success (2xx) or a permanent error (4xx) — return immediately
+        return response;
+      }
+
+      // Retryable HTTP status
+      lastErr = 'HTTP ' + code;
+      Logger.log(context + ': retryable status ' + code + ' (attempt ' + attempt + '/' + maxTries + ')');
+
+    } catch (networkErr) {
+      // Network-level failure (DNS, timeout, etc.)
+      lastErr = networkErr.message;
+      Logger.log(context + ': network error on attempt ' + attempt + '/' + maxTries + ': ' + networkErr.message);
+    }
+
+    if (attempt < maxTries) {
+      // Exponential backoff: 2s, 4s, 8s …  capped at 30s
+      var delay = Math.min(Math.pow(2, attempt) * 1000, 30000);
+      Logger.log(context + ': waiting ' + (delay / 1000) + 's before retry');
+      Utilities.sleep(delay);
+    }
+  }
+
+  var msg = context + ': all ' + maxTries + ' attempts failed. Last error: ' + lastErr;
+  Logger.log(msg);
+  if (typeof logError === 'function') {
+    logError(context, 'All retries exhausted', { url: url, lastError: lastErr, maxTries: maxTries });
+  }
+  throw new Error(msg);
+}
+
+
+// ============================================================================
 // Test function
 // ============================================================================
 

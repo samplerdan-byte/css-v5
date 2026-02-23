@@ -314,12 +314,20 @@ function populateCarrierAccounts() {
   // Write each account column separately as a sparse update.
   // Collect all row indices that need writes, group by contiguous blocks where possible,
   // or fall back to individual range writes (still far fewer API calls than before).
+  // V5: perf — use RangeList to batch all same-column writes in one API call (N setValue → 1 setValue)
   function flushPendingColumn(pending, colNum) {
-    // Sort row indices and write each individually (rows are non-contiguous)
     var indices = Object.keys(pending);
+    if (indices.length === 0) return;
+    // Group by value so we can use getRangeList().setValue() per distinct value
+    var byValue = {};
     for (var pi = 0; pi < indices.length; pi++) {
-      var rowNum = parseInt(indices[pi], 10) + 2; // 1-indexed sheet row (skip header), base 10 radix
-      sheet.getRange(rowNum, colNum).setValue(String(pending[indices[pi]] || '').trim());
+      var rowNum = parseInt(indices[pi], 10) + 2;
+      var val = String(pending[indices[pi]] || '').trim();
+      if (!byValue[val]) byValue[val] = [];
+      byValue[val].push(sheet.getRange(rowNum, colNum).getA1Notation());
+    }
+    for (var v in byValue) {
+      sheet.getRangeList(byValue[v]).setValue(v);
     }
   }
   flushPendingColumn(pendingFedex, fedexCol + 1);
@@ -344,8 +352,17 @@ function populateCarrierAccounts() {
       prefUpdates.push({ rowNum: p + 2, value: hasFedex ? 'FedEx' : 'UPS' });
     }
   }
-  for (var pu = 0; pu < prefUpdates.length; pu++) {
-    sheet.getRange(prefUpdates[pu].rowNum, preferredCol + 1).setValue(prefUpdates[pu].value);
+  // V5: perf — batch preferred-carrier writes by value using RangeList (N setValue → 2 setValue at most)
+  if (prefUpdates.length > 0) {
+    var fedexPrefRanges = [];
+    var upsPrefRanges = [];
+    for (var pu = 0; pu < prefUpdates.length; pu++) {
+      var a1 = sheet.getRange(prefUpdates[pu].rowNum, preferredCol + 1).getA1Notation();
+      if (prefUpdates[pu].value === 'FedEx') fedexPrefRanges.push(a1);
+      else upsPrefRanges.push(a1);
+    }
+    if (fedexPrefRanges.length > 0) sheet.getRangeList(fedexPrefRanges).setValue('FedEx');
+    if (upsPrefRanges.length > 0) sheet.getRangeList(upsPrefRanges).setValue('UPS');
   }
   Logger.log('populateCarrierAccounts: set preferred carrier on ' + prefUpdates.length + ' rows');
   
@@ -370,21 +387,38 @@ function populateCarrierAccounts() {
 // CARRIER LOOKUP (used by scan-out + coversheets)
 // ============================================================
 
+// V5: perf — in-memory cache for Contacts sheet data so repeated lookupCarrierByCompany()
+// calls within one execution (e.g. cover sheet loop) only read the sheet once.
+var _carrierLookupCache = null;
+
+function _getCarrierLookupCache() {
+  if (_carrierLookupCache) return _carrierLookupCache;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Contacts');
+  if (!sheet || sheet.getLastRow() < 2) { _carrierLookupCache = { data: [], fedexCol: -1, upsCol: -1, preferredCol: -1 }; return _carrierLookupCache; }
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  _carrierLookupCache = {
+    data: sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues(),
+    fedexCol: headers.indexOf('FedEx Account'),
+    upsCol: headers.indexOf('UPS Account'),
+    preferredCol: headers.indexOf('Preferred Carrier')
+  };
+  return _carrierLookupCache;
+}
+
 function lookupCarrierByCompany(companyName) {
   try {
     if (!companyName) return null;
 
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName('Contacts');
-    if (!sheet || sheet.getLastRow() < 2) return null;
-
-    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    var fedexCol = headers.indexOf('FedEx Account');
-    var upsCol = headers.indexOf('UPS Account');
-    var preferredCol = headers.indexOf('Preferred Carrier');
+    // V5: perf — read sheet once per execution via cache (N sheet reads → 1)
+    var cache = _getCarrierLookupCache();
+    var data = cache.data;
+    var fedexCol = cache.fedexCol;
+    var upsCol = cache.upsCol;
+    var preferredCol = cache.preferredCol;
     if (fedexCol === -1 && upsCol === -1) return null;
+    if (!data || data.length === 0) return null;
 
-    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
     var searchName = String(companyName).trim().toLowerCase();
     if (!searchName) return null;
 

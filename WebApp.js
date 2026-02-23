@@ -274,10 +274,10 @@ function scanSampleBarcode(barcode) {
         mainSheet.getRange(rowNum, statusIdx + 1).setValue(CONFIG.statusValues.SCANNED);
         if (scanDateIdx !== undefined) mainSheet.getRange(rowNum, scanDateIdx + 1).setValue(new Date());
         if (scanByIdx !== undefined) {
-          try { mainSheet.getRange(rowNum, scanByIdx + 1).setValue(Session.getActiveUser().getEmail()); } catch(e) {}
+          try { mainSheet.getRange(rowNum, scanByIdx + 1).setValue(Session.getActiveUser().getEmail()); } catch(e) { logError('doGet_scanIn', 'Error setting scan user', { sampleId: searchId, error: e.message }); }
         }
-        
-        try { updateLiveOrdersView(); } catch(e) {}
+
+        try { updateLiveOrdersView(); } catch(e) { logError('doGet_scanIn', 'Error updating Live Orders', { sampleId: searchId, error: e.message }); }
         
         return {
           success: true,
@@ -379,8 +379,8 @@ function webAppProcessPDF(base64Data, fileName) {
       text = doc.getBody().getText();
     } finally {
       // Clean up temp files even if extraction fails
-      try { if (docFile) DriveApp.getFileById(docFile.id).setTrashed(true); } catch(ignore) {}
-      try { tempFile.setTrashed(true); } catch(ignore) {}
+      try { if (docFile) DriveApp.getFileById(docFile.id).setTrashed(true); } catch(cleanupErr) { logError('extractPDFText', 'Error trashing converted PDF file', { error: cleanupErr.message }); }
+      try { tempFile.setTrashed(true); } catch(cleanupErr) { logError('extractPDFText', 'Error trashing temp PDF file', { error: cleanupErr.message }); }
     }
     
     if (!text || text.trim().length === 0) {

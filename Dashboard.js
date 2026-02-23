@@ -35,7 +35,7 @@ function refreshDashboard() {
   var invSheet = ss.getSheetByName(BILLING_CONFIG.invoicesSheetName);
   
   if (!mainSheet) {
-    try { SpreadsheetApp.getUi().alert('Main sheet not found. Run Setup first.'); } catch(e) {}
+    try { SpreadsheetApp.getUi().alert('Main sheet not found. Run Setup first.'); } catch(e) { logError('refreshDashboard', 'Error showing setup alert', { error: e.message }); }
     return;
   }
 
@@ -74,7 +74,9 @@ function refreshDashboard() {
         avgTurn: avgTurn,
         _ts: now.getTime()
       }));
-    } catch(e) {}
+    } catch(e) {
+      logError('refreshDashboard', 'Error caching metrics', { error: e.message });
+    }
   }
 
   // ── Build Dashboard Sheet ──
@@ -247,7 +249,7 @@ function refreshDashboard() {
     for (var r = 0; r < metrics.recentOrders.length; r++) {
       var ro = metrics.recentOrders[r];
       var recvStr = '';
-      try { recvStr = Utilities.formatDate(new Date(ro.receivedDate), tz, 'MM/dd hh:mm a'); } catch(e) {}
+      try { recvStr = Utilities.formatDate(new Date(ro.receivedDate), tz, 'MM/dd hh:mm a'); } catch(e) { logError('refreshDashboard', 'Error formatting received date', { sampleId: ro.csSample, date: ro.receivedDate, error: e.message }); }
       roDataRows.push(['', ro.csSample || ro.csOrder || '—', ro.status || '—', '', ro.sender || '—', ro.warehouse || '—', '', recvStr, '']);
     }
     var roAllRows = [['', 'CS Sample #', 'Status', '', 'Customer', 'Warehouse', '', 'Received', '']].concat(roDataRows);
@@ -266,10 +268,12 @@ function refreshDashboard() {
   try {
     var protection = dashSheet.protect().setDescription('Dashboard — auto-generated');
     protection.setWarningOnly(true);
-  } catch(e) {}
+  } catch(e) {
+    logError('refreshDashboard', 'Error protecting dashboard sheet', { error: e.message });
+  }
 
   // Move dashboard to first position
-  try { ss.setActiveSheet(dashSheet); ss.moveActiveSheet(1); } catch(e) {}
+  try { ss.setActiveSheet(dashSheet); ss.moveActiveSheet(1); } catch(e) { logError('refreshDashboard', 'Error moving dashboard to first position', { error: e.message }); }
 
   Logger.log('Dashboard refreshed at ' + fmtDate);
 }
@@ -326,7 +330,9 @@ function _computeDashMetrics(ss, mainSheet, completedSheet, invSheet, now) {
         if (bs) billedSamples[bs] = true;
       }
     }
-  } catch(e) {}
+  } catch(e) {
+    logError('_gatherMetrics', 'Error loading billed samples from Line Items', { error: e.message });
+  }
 
   for (var i = 0; i < allOrders.length; i++) {
     var o = allOrders[i];
@@ -506,14 +512,17 @@ function _dashSection(sheet, row, title) {
 function _dashCard(sheet, row, col, label, value, bgColor, fontColor) {
   bgColor = bgColor || DASH_CONFIG.cardBg;
   fontColor = fontColor || DASH_CONFIG.numberFont;
-  
-  sheet.getRange(row, col).setValue(label)
-    .setFontSize(9).setFontColor('#666').setBackground(bgColor)
-    .setVerticalAlignment('middle');
-  sheet.getRange(row, col + 1).setValue(value)
-    .setFontSize(16).setFontWeight('bold').setFontColor(fontColor)
-    .setBackground(bgColor).setHorizontalAlignment('right')
-    .setVerticalAlignment('middle');
+
+  // V5: perf — batch label+value into one setValues call (2 API calls → 1)
+  var r = sheet.getRange(row, col, 1, 2);
+  r.setValues([[label, value]]);
+  // Style label cell
+  var labelCell = sheet.getRange(row, col);
+  labelCell.setFontSize(9).setFontColor('#666').setBackground(bgColor).setVerticalAlignment('middle');
+  // Style value cell
+  var valueCell = sheet.getRange(row, col + 1);
+  valueCell.setFontSize(16).setFontWeight('bold').setFontColor(fontColor)
+    .setBackground(bgColor).setHorizontalAlignment('right').setVerticalAlignment('middle');
   sheet.setRowHeight(row, 36);
   return row + 1;
 }

@@ -133,10 +133,19 @@ function _easyPostFetch(endpoint, payload) {
     muteHttpExceptions: true
   };
 
-  Logger.log('EasyPost POST ' + endpoint);
+  // QUOTA GUARD: Check UrlFetch quota before making API call
+  var fetchQuota = (typeof _quotaCheckUrlFetchQuota === 'function') ? _quotaCheckUrlFetchQuota() : { remaining: 20000, countToday: 0, canFetch: true };
+  if (!fetchQuota.canFetch) {
+    Logger.log('EasyPost: UrlFetch quota exhausted (' + fetchQuota.countToday + '/' + fetchQuota.limit + ' today)');
+    throw new Error('EasyPost: Daily UrlFetch quota exhausted. Max ' + fetchQuota.limit + ' calls/day.');
+  }
+
+  Logger.log('EasyPost POST ' + endpoint + ' (quota: ' + fetchQuota.remaining + ' remaining)');
   var response;
   try {
-    response = UrlFetchApp.fetch(url, options);
+    response = fetchWithRetry(url, options, 3, 'EasyPost POST ' + endpoint);
+    // QUOTA GUARD: Log the fetch
+    if (typeof _quotaLogUrlFetch === 'function') _quotaLogUrlFetch();
   } catch (fetchErr) {
     Logger.log('EasyPost fetch error on POST ' + endpoint + ': ' + fetchErr.message);
     throw new Error('EasyPost network error: ' + fetchErr.message);
@@ -180,10 +189,19 @@ function _easyPostGet(endpoint) {
     muteHttpExceptions: true
   };
 
-  Logger.log('EasyPost GET ' + endpoint);
+  // QUOTA GUARD: Check UrlFetch quota before making API call
+  var fetchQuota = (typeof _quotaCheckUrlFetchQuota === 'function') ? _quotaCheckUrlFetchQuota() : { remaining: 20000, countToday: 0, canFetch: true };
+  if (!fetchQuota.canFetch) {
+    Logger.log('EasyPost: UrlFetch quota exhausted (' + fetchQuota.countToday + '/' + fetchQuota.limit + ' today)');
+    throw new Error('EasyPost: Daily UrlFetch quota exhausted. Max ' + fetchQuota.limit + ' calls/day.');
+  }
+
+  Logger.log('EasyPost GET ' + endpoint + ' (quota: ' + fetchQuota.remaining + ' remaining)');
   var response;
   try {
-    response = UrlFetchApp.fetch(url, options);
+    response = fetchWithRetry(url, options, 3, 'EasyPost GET ' + endpoint);
+    // QUOTA GUARD: Log the fetch
+    if (typeof _quotaLogUrlFetch === 'function') _quotaLogUrlFetch();
   } catch (fetchErr) {
     Logger.log('EasyPost fetch error on GET ' + endpoint + ': ' + fetchErr.message);
     throw new Error('EasyPost network error: ' + fetchErr.message);

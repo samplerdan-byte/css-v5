@@ -54,8 +54,20 @@ function getAllSamplesForOrder(csOrderNum) {
     if (col['CS Order #'] === undefined) return;
     
     var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-    
+
+    // QUOTA GUARD: Track execution time
+    var startTime = Date.now();
+
     for (var i = 0; i < data.length; i++) {
+      // QUOTA GUARD: Check every 100 rows for timeout
+      if (i % 100 === 0) {
+        var timeCheck = (typeof _quotaCheckExecutionTime === 'function') ? _quotaCheckExecutionTime(startTime) : { shouldStop: false };
+        if (timeCheck.shouldStop) {
+          Logger.log('archiveCompletedOrders: Execution timeout approaching after ' + i + ' rows. Stopping to avoid 6-min limit.');
+          break;
+        }
+      }
+
       var rowOrderNum = String(data[i][col['CS Order #']] || '').trim();
       
       if (rowOrderNum === csOrderNum) {
@@ -481,11 +493,16 @@ function updateCoverSheetField(csOrderNum, fieldName, value) {
     var fieldColIdx = col[fieldName];
     var data = sheet.getRange(2, orderColIdx + 1, sheet.getLastRow() - 1, 1).getValues();
 
+    // V5: perf — collect matching rows then batch-write via RangeList (N setValue → 1 setValue)
+    var matchingA1 = [];
     for (var i = 0; i < data.length; i++) {
       if (String(data[i][0]).trim() === String(csOrderNum).trim()) {
-        sheet.getRange(i + 2, fieldColIdx + 1).setValue(value);
+        matchingA1.push(sheet.getRange(i + 2, fieldColIdx + 1).getA1Notation());
         updated++;
       }
+    }
+    if (matchingA1.length > 0) {
+      sheet.getRangeList(matchingA1).setValue(value);
     }
   });
 
@@ -524,7 +541,7 @@ function generateSingleCoverSheetHtmlFull(order, samples) {
     var group = receiverGroups[recv];
 
     var carrier = null;
-    try { carrier = lookupCarrierByCompany(recv); } catch(e) {}
+    try { carrier = lookupCarrierByCompany(recv); } catch(e) { logError('_buildOrdersHtml', 'Error looking up carrier for receiver', { receiver: recv, error: e.message }); }
     var carrierLine = '';
     if (carrier && (carrier.fedex || carrier.ups)) {
       var parts = [];
@@ -641,7 +658,7 @@ function generateOrderDetailsHtml(order, samples) {
     var group = receiverGroups[recv];
     
     var carrier = null;
-    try { carrier = lookupCarrierByCompany(recv); } catch(e) {}
+    try { carrier = lookupCarrierByCompany(recv); } catch(e) { logError('_buildReceiverStatusHtml', 'Error looking up carrier for receiver', { receiver: recv, error: e.message }); }
     var carrierLine = '';
     if (carrier && (carrier.fedex || carrier.ups)) {
       var parts = [];
@@ -876,7 +893,7 @@ function updateLiveOrdersView() {
     liveSheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
     liveSheet.getRange(1, 1, 1, headers[0].length).setFontWeight('bold').setBackground('#d9ead3');
     liveSheet.setFrozenRows(1);
-    try { liveSheet.getRange(1, 1, 1, headers[0].length).createFilter(); } catch(e) {}
+    try { liveSheet.getRange(1, 1, 1, headers[0].length).createFilter(); } catch(e) { logError('setupOrders', 'Failed to create filter on Live Orders sheet', { error: e.message }); }
     Logger.log('Created Live Orders sheet');
   }
 
@@ -887,7 +904,7 @@ function updateLiveOrdersView() {
     completedSheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
     completedSheet.getRange(1, 1, 1, headers[0].length).setFontWeight('bold').setBackground('#f4cccc');
     completedSheet.setFrozenRows(1);
-    try { completedSheet.getRange(1, 1, 1, headers[0].length).createFilter(); } catch(e) {}
+    try { completedSheet.getRange(1, 1, 1, headers[0].length).createFilter(); } catch(e) { logError('setupOrders', 'Failed to create filter on Completed Orders sheet', { error: e.message }); }
     Logger.log('Created Completed Orders sheet');
   }
 
@@ -933,14 +950,41 @@ function updateLiveOrdersView() {
   }
   Logger.log('Live Orders updated: ' + liveRows.length + ' active samples');
 
-  // Populate Completed Orders
+  // Populate Completed Orders — preserve rows permanently moved by processPendingMoves
+  // (those rows exist only in Completed, not in All Orders anymore)
+  var sampleIdx = col['CS Sample #'];
+  var newCompletedSamples = {};
+  for (var ci = 0; ci < completedRows.length; ci++) {
+    var csId = (sampleIdx !== undefined) ? String(completedRows[ci][sampleIdx] || '').trim() : '';
+    if (csId) newCompletedSamples[csId] = true;
+  }
+
+  // Read existing Completed rows before clearing — keep any not in All Orders
+  var preservedRows = [];
+  if (completedSheet.getLastRow() > 1 && sampleIdx !== undefined) {
+    var existingCompleted = completedSheet.getRange(2, 1, completedSheet.getLastRow() - 1, completedSheet.getLastColumn()).getValues();
+    var existingFormulas = completedSheet.getRange(2, 1, completedSheet.getLastRow() - 1, completedSheet.getLastColumn()).getFormulas();
+    for (var ec = 0; ec < existingCompleted.length; ec++) {
+      var ecSample = String(existingCompleted[ec][sampleIdx] || '').trim();
+      if (ecSample && !newCompletedSamples[ecSample]) {
+        // This row was permanently moved — not in All Orders, preserve it
+        var ecRow = existingCompleted[ec].slice();
+        for (var ef = 0; ef < existingFormulas[ec].length; ef++) {
+          if (existingFormulas[ec][ef]) ecRow[ef] = existingFormulas[ec][ef];
+        }
+        preservedRows.push(ecRow);
+      }
+    }
+  }
+
   if (completedSheet.getLastRow() > 1) {
     completedSheet.getRange(2, 1, completedSheet.getLastRow() - 1, completedSheet.getLastColumn() || totalCols).clear();
   }
-  if (completedRows.length > 0) {
-    completedSheet.getRange(2, 1, completedRows.length, totalCols).setValues(completedRows);
+  var allCompletedRows = completedRows.concat(preservedRows);
+  if (allCompletedRows.length > 0) {
+    completedSheet.getRange(2, 1, allCompletedRows.length, totalCols).setValues(allCompletedRows);
   }
-  Logger.log('Completed Orders updated: ' + completedRows.length + ' completed samples');
+  Logger.log('Completed Orders updated: ' + completedRows.length + ' from All Orders + ' + preservedRows.length + ' preserved (permanently moved)');
 
   // Update user view sheets
   var userSheets = ['View - Danboy1217'];
@@ -952,7 +996,7 @@ function updateLiveOrdersView() {
         userSheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
         userSheet.getRange(1, 1, 1, headers[0].length).setFontWeight('bold').setFontColor('#000000').setBackground('#d9ead3');
         userSheet.setFrozenRows(1);
-        try { userSheet.getRange(1, 1, 1, headers[0].length).createFilter(); } catch(e) {}
+        try { userSheet.getRange(1, 1, 1, headers[0].length).createFilter(); } catch(e) { logError('setupOrders', 'Failed to create filter on user sheet', { user: userEmail, error: e.message }); }
       }
       if (userSheet.getLastRow() > 1) {
         userSheet.getRange(2, 1, userSheet.getLastRow() - 1, userSheet.getLastColumn() || totalCols).clear();
@@ -982,9 +1026,11 @@ function generateOpenOrdersReport() {
   
   const lastRow = mainSheet.getLastRow();
   if (lastRow < 2) { ui.alert('No data in system!'); return; }
-  
-  const data = mainSheet.getRange(2, 1, lastRow - 1, mainSheet.getLastColumn()).getValues();
-  const headers = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues()[0];
+
+  // V5: perf — read headers + data in one getValues() call (2 API calls → 1)
+  const allRows = mainSheet.getRange(1, 1, lastRow, mainSheet.getLastColumn()).getValues();
+  const headers = allRows[0];
+  const data = allRows.slice(1);
   
   const statusColIndex = headers.indexOf('Status');
   const csSampleColIndex = headers.indexOf('CS Sample #');
@@ -1240,12 +1286,20 @@ function processPendingMoves() {
   SpreadsheetApp.flush();
 
   // Auto-bill the completed samples
+  var autoBillFailed = false;
   try {
     if (typeof _autoBillSamples === 'function') {
       _autoBillSamples(rowsToAppend, ss);
     }
   } catch (e) {
-    Logger.log('Auto-billing skipped: ' + e);
+    autoBillFailed = true;
+    Logger.log('Auto-billing FAILED: ' + e);
+    if (typeof logError === 'function') {
+      logError('processPendingMoves', 'Auto-billing failed for ' + shippedSamples.length + ' samples — these need manual billing', {
+        samples: shippedSamples.map(function(s) { return s.sample; }).join(', '),
+        error: e.message
+      });
+    }
   }
 
   // Build set of sample #s to delete
@@ -1272,13 +1326,14 @@ function processPendingMoves() {
   }
   
   SpreadsheetApp.flush();
-  try { updateLiveOrdersView(); } catch(e) {}
-  
+  try { updateLiveOrdersView(); } catch(e) { logError('markSamplesShipped', 'Error updating Live Orders view', { samplesCount: shippedSamples.length, error: e.message }); }
+
   var remaining = Object.keys(toDelete).length;
   var msg = 'Moved ' + shippedSamples.length + ' samples to Completed Orders';
   if (remaining > 0) msg += ' (' + remaining + ' could not be deleted from main sheet)';
-  
-  return { moved: shippedSamples.length, message: msg };
+  if (autoBillFailed) msg += '\n⚠️ Auto-billing failed — run Billing → Generate Invoice manually for these samples';
+
+  return { moved: shippedSamples.length, message: msg, billingFailed: autoBillFailed };
 }
 
 function processPendingMovesWithAlert() {
@@ -1325,7 +1380,51 @@ function archiveOldOrders() {
   );
   
   if (response !== ui.Button.YES) return;
-  
+
+  // ── Billing integrity check: warn if any sample about to be archived has no Invoice Line Item ──
+  // Archiving a sample without billing means the invoice for that work is permanently lost.
+  var billedSamplesSet = {};
+  try {
+    var liSheet = ss.getSheetByName('Invoice Line Items');
+    if (liSheet && liSheet.getLastRow() >= 2) {
+      var liData = liSheet.getRange(2, 5, liSheet.getLastRow() - 1, 1).getValues();
+      for (var bi = 0; bi < liData.length; bi++) {
+        var bs = String(liData[bi][0]).trim();
+        if (bs) billedSamplesSet[bs] = true;
+      }
+    }
+  } catch (billingCheckErr) {
+    Logger.log('archiveOldOrders: billing check error (continuing): ' + billingCheckErr);
+  }
+
+  var unbilledInArchive = [];
+  var csSampleColIdx = col['CS Sample #'];
+  if (csSampleColIdx !== undefined) {
+    for (var ub = 0; ub < oldRows.length; ub++) {
+      var dataIdxUb = oldRows[ub] - 2;
+      var sampleNumUb = String(data[dataIdxUb][csSampleColIdx] || '').trim();
+      if (sampleNumUb && !billedSamplesSet[sampleNumUb]) {
+        unbilledInArchive.push(sampleNumUb);
+      }
+    }
+  }
+
+  if (unbilledInArchive.length > 0) {
+    logWarning('archiveOldOrders',
+      'Archiving ' + unbilledInArchive.length + ' sample(s) with no Invoice Line Item',
+      { count: unbilledInArchive.length, samples: unbilledInArchive.slice(0, 20).join(', ') });
+    Logger.log('archiveOldOrders BILLING WARNING: ' + unbilledInArchive.length + ' unbilled samples: ' +
+      unbilledInArchive.slice(0, 10).join(', '));
+    var billingResp = ui.alert(
+      '\u26a0\ufe0f Unbilled Samples Detected',
+      unbilledInArchive.length + ' sample(s) being archived have no billing record in Invoice Line Items.\n\n' +
+      'First ' + Math.min(10, unbilledInArchive.length) + ': ' + unbilledInArchive.slice(0, 10).join(', ') + '\n\n' +
+      'Consider running Billing \u2192 Generate Invoice first.\n\nContinue archiving anyway?',
+      ui.ButtonSet.YES_NO
+    );
+    if (billingResp !== ui.Button.YES) return;
+  }
+
   var lastColForCsv = completedSheet.getLastColumn();
   var headers = completedSheet.getRange(1, 1, 1, lastColForCsv).getValues()[0];
   var csvContent = headers.map(escapeCSVField).join(',') + '\n';
@@ -1642,28 +1741,37 @@ function addDataToSheet(sheet, data, options) {
       }
     }
 
+    // Formula injection guard: prepend a single quote to any string
+    // starting with =, +, -, or @ so Sheets treats it as plain text.
+    function _safeStr(val) {
+      if (val === null || val === undefined) return '';
+      var s = String(val);
+      if (s.length > 0 && '=+-@'.indexOf(s.charAt(0)) !== -1) return "'" + s;
+      return s;
+    }
+
     // Build row by header name
     row[col['Timestamp']] = new Date();
     row[col['CS Order #']] = csOrderNumber;
     row[col['CS Sample #']] = csSampleNumber;
-    row[col['Sender']] = data.sender || '';
-    row[col['Receiver']] = data.receiver || '';
-    row[col['Warehouse']] = data.warehouse || '';
-    row[col['Description']] = data.description || '';
-    row[col['Sample Order #']] = data.sampleOrderNum || '';
-    row[col['Cargo #']] = data.cargo || '';
-    row[col['Mark #']] = data.mark || '';
-    row[col['Container #']] = data.container || '';
-    row[col['Reference']] = data.reference || '';
-    row[col['Bag Count']] = data.bagCount || '';
-    row[col['Weight']] = data.weight || '';
-    row[col['Sample Weight']] = data.sampleWeight || '';
-    row[col['P #']] = data.pNumber || '';
-    row[col['S #']] = data.sNumber || '';
-    row[col['Shipping Process']] = data.shippingProcess || '';
-    row[col['Comments']] = fullComments;
-    row[col['Source Email']] = data.sourceEmail || '';
-    row[col['QR Data']] = qrData;
+    row[col['Sender']] = _safeStr(data.sender);
+    row[col['Receiver']] = _safeStr(data.receiver);
+    row[col['Warehouse']] = _safeStr(data.warehouse);
+    row[col['Description']] = _safeStr(data.description);
+    row[col['Sample Order #']] = _safeStr(data.sampleOrderNum);
+    row[col['Cargo #']] = _safeStr(data.cargo);
+    row[col['Mark #']] = _safeStr(data.mark);
+    row[col['Container #']] = _safeStr(data.container);
+    row[col['Reference']] = _safeStr(data.reference);
+    row[col['Bag Count']] = _safeStr(data.bagCount);
+    row[col['Weight']] = _safeStr(data.weight);
+    row[col['Sample Weight']] = _safeStr(data.sampleWeight);
+    row[col['P #']] = _safeStr(data.pNumber);
+    row[col['S #']] = _safeStr(data.sNumber);
+    row[col['Shipping Process']] = _safeStr(data.shippingProcess);
+    row[col['Comments']] = _safeStr(fullComments);
+    row[col['Source Email']] = _safeStr(data.sourceEmail);
+    row[col['QR Data']] = _safeStr(qrData);
     row[col['Status']] = 'Received';
 
     // Print column
@@ -1681,16 +1789,16 @@ function addDataToSheet(sheet, data, options) {
       row[col['Needs Review']] = needsReview ? '⚠️ ' + needsReview.slice(0, -2) : '';
     }
 
-    if (col['Email Link'] !== undefined) row[col['Email Link']] = data.emailLink || '';
-    if (col['Attachments'] !== undefined) row[col['Attachments']] = data.attachments || '';
-    if (col['Photos'] !== undefined) row[col['Photos']] = data.photos || '';
-    if (col['Container Status'] !== undefined) row[col['Container Status']] = data.containerStatus || '';
-    if (col['Container ETA'] !== undefined) row[col['Container ETA']] = data.containerETA || '';
-    if (col['Sample Type'] !== undefined) row[col['Sample Type']] = data.sampleType || '';
-    if (col['Shipping Line'] !== undefined) row[col['Shipping Line']] = data.shippingLine || '';
-    if (col['Shipping Notes'] !== undefined) row[col['Shipping Notes']] = data.shippingNotes || '';
-    if (col['B/L #'] !== undefined) row[col['B/L #']] = data.bol || '';
-    if (col['Ship Status'] !== undefined) row[col['Ship Status']] = data.shipStatus || '';
+    if (col['Email Link'] !== undefined) row[col['Email Link']] = _safeStr(data.emailLink);
+    if (col['Attachments'] !== undefined) row[col['Attachments']] = _safeStr(data.attachments);
+    if (col['Photos'] !== undefined) row[col['Photos']] = _safeStr(data.photos);
+    if (col['Container Status'] !== undefined) row[col['Container Status']] = _safeStr(data.containerStatus);
+    if (col['Container ETA'] !== undefined) row[col['Container ETA']] = _safeStr(data.containerETA);
+    if (col['Sample Type'] !== undefined) row[col['Sample Type']] = _safeStr(data.sampleType);
+    if (col['Shipping Line'] !== undefined) row[col['Shipping Line']] = _safeStr(data.shippingLine);
+    if (col['Shipping Notes'] !== undefined) row[col['Shipping Notes']] = _safeStr(data.shippingNotes);
+    if (col['B/L #'] !== undefined) row[col['B/L #']] = _safeStr(data.bol);
+    if (col['Ship Status'] !== undefined) row[col['Ship Status']] = _safeStr(data.shipStatus);
 
     // Append the row
     sheet.appendRow(row);
@@ -1748,7 +1856,9 @@ function addDataToSheet(sheet, data, options) {
     throw e;
   } finally {
     if (lockAcquired) {
-      try { lock.releaseLock(); } catch (ignore) {}
+      try { lock.releaseLock(); } catch (releaseErr) {
+        logError('addDataToSheet', 'Error releasing lock', { error: releaseErr.message });
+      }
     }
   }
 }
@@ -2028,6 +2138,8 @@ function repairReceivers() {
 
   // Refresh Live Orders if anything changed
   if (updates.length > 0) {
-    try { updateLiveOrdersView(); } catch (e) { Logger.log('Live Orders refresh failed: ' + e); }
+    try { updateLiveOrdersView(); } catch (e) {
+      logError('repairReceiverInfo', 'Error refreshing Live Orders after repair', { updatesCount: updates.length, error: e.message });
+    }
   }
 }

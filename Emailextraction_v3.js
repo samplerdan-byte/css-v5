@@ -392,6 +392,15 @@ var SAMPLING_INDICATORS = [
 // ============================================================================
 
 function processPDFsFromGmail() {
+  // --- CONCURRENCY GUARD: prevent two triggers from processing the same emails ---
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    Logger.log('processPDFsFromGmail: another instance is already running — exiting');
+    return;
+  }
+  var lockAcquired = true;
+  try {
+
   var t0 = new Date();
   Logger.log('=== STARTING PROCESS (OPTIMIZED) ===');
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.mainSheetName);
@@ -416,7 +425,17 @@ function processPDFsFromGmail() {
 
   var searchQuery = buildSearchQuery();
   Logger.log('Search query: ' + searchQuery);
-  var threads = GmailApp.search(searchQuery, 0, 50);
+  var threads;
+  try {
+    threads = GmailApp.search(searchQuery, 0, 50);
+  } catch (gmailSearchErr) {
+    Logger.log('GmailApp.search failed: ' + gmailSearchErr.message);
+    if (typeof logError === 'function') {
+      logError('processPDFsFromGmail', 'GmailApp.search failed — quota or auth issue', { error: gmailSearchErr.message });
+    }
+    try { SpreadsheetApp.getUi().alert('Gmail search failed: ' + gmailSearchErr.message + '\n\nThis usually means Gmail quota is exhausted. Try again in a few minutes.'); } catch (ignore) {}
+    return;
+  }
   Logger.log('Found threads: ' + threads.length);
 
   var tSearch = new Date();
@@ -567,6 +586,8 @@ function processPDFsFromGmail() {
     });
 
     // --- Write each record to sheet ---
+    var threadWriteSuccesses = 0;
+    var threadWriteFailures = 0;
     dedupedRecords.forEach(function(data, dataIndex) {
       Logger.log('Adding record ' + (dataIndex + 1) + '/' + dedupedRecords.length + ': ' + data.container);
 
@@ -579,6 +600,7 @@ function processPDFsFromGmail() {
             existingSample: dupCheck.existingSample
           });
         }
+        threadWriteSuccesses++; // Duplicate = already in system, counts as handled
         return;
       }
 
@@ -601,6 +623,7 @@ function processPDFsFromGmail() {
         addDataToSheet(sheet, data, { skipLiveUpdate: true, skipAutoPrint: false, orderCache: orderCache });
         writeTime += (new Date() - tWrite);
         processedCount++;
+        threadWriteSuccesses++;
         Logger.log('Successfully added');
 
         // --- Save attachments (PDFs and images) ---
@@ -608,7 +631,9 @@ function processPDFsFromGmail() {
         try {
           if (msg) {
             var lastRow = sheet.getLastRow();
-            var sampleId = (sampleColIdx >= 0) ? sheet.getRange(lastRow, sampleColIdx + 1).getValue() : '';
+            // V5: perf — read the sample ID from the in-memory data object written by addDataToSheet
+            // instead of a separate getValue() API call (1 API call eliminated per sample)
+            var sampleId = (sampleColIdx >= 0 && data.csSampleNum) ? data.csSampleNum : ((sampleColIdx >= 0) ? sheet.getRange(lastRow, sampleColIdx + 1).getValue() : '');
             if (sampleId) {
               var savedPDFs = saveEmailPDFs(msg, String(sampleId));
               if (savedPDFs.length > 0) {
@@ -634,6 +659,7 @@ function processPDFsFromGmail() {
         attachTime += (new Date() - tAtt);
 
       } catch (e) {
+        threadWriteFailures++;
         if (typeof logError === 'function') {
           logError('addDataToSheet', e.toString(), { container: data.container, mark: data.mark });
         }
@@ -642,7 +668,17 @@ function processPDFsFromGmail() {
       }
     });
 
-    thread.addLabel(getOrCreateLabel('PDF_Processed'));
+    // Only mark as processed if: no records to extract, or at least one was handled.
+    // If records were extracted but ALL writes failed, label for retry so they aren't lost.
+    if (dedupedRecords.length === 0 || threadWriteSuccesses > 0) {
+      thread.addLabel(getOrCreateLabel('PDF_Processed'));
+    } else {
+      Logger.log('WARNING: ' + threadWriteFailures + ' record(s) failed to write, 0 succeeded — NOT marking as PDF_Processed for retry');
+      thread.addLabel(getOrCreateLabel('PDF_FailedWrite'));
+      if (typeof logError === 'function') {
+        logError('processPDFsFromGmail', 'All ' + threadWriteFailures + ' records failed to write — thread NOT marked as processed', { subject: subject, from: senderEmail });
+      }
+    }
     Logger.log('Thread ' + (threadIndex + 1) + ' done in ' + (new Date() - tThread) + 'ms');
     } catch (threadErr) {
       Logger.log('THREAD ERROR (skipping thread ' + (threadIndex + 1) + '): ' + threadErr);
@@ -680,6 +716,13 @@ function processPDFsFromGmail() {
   } catch (uiErr) {
     // No UI context (running from trigger) — just log
     Logger.log('Processed ' + processedCount + ' records from ' + threads.length + ' emails in ' + elapsed + 's');
+  }
+
+  } finally {
+    // --- END CONCURRENCY GUARD ---
+    if (lockAcquired) {
+      try { lock.releaseLock(); } catch (ignore) {}
+    }
   }
 }
 
@@ -1764,7 +1807,9 @@ function extractTextFromPDF(attachment) {
   } finally {
     // Always clean up the temporary Drive file, even if extraction fails
     if (fileId) {
-      try { Drive.Files.remove(fileId); } catch (ignore) {}
+      try { Drive.Files.remove(fileId); } catch (cleanupErr) {
+        logError('extractTextFromPDF', 'Failed to delete temporary PDF file', { fileId: fileId, error: cleanupErr.message });
+      }
     }
   }
 }
@@ -1778,13 +1823,26 @@ function saveEmailPDFs(message, sampleId) {
     for (var i = 0; i < attachments.length; i++) {
       var att = attachments[i];
       if (att.getContentType() === 'application/pdf' || att.getName().toLowerCase().endsWith('.pdf')) {
-        var fileName = sampleId + '_' + att.getName();
-        var file = folder.createFile(att.copyBlob().setName(fileName));
-        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        saved.push({ name: att.getName(), url: file.getUrl(), size: att.getSize() });
+        try {
+          var fileName = sampleId + '_' + att.getName();
+          var file = folder.createFile(att.copyBlob().setName(fileName));
+          file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+          saved.push({ name: att.getName(), url: file.getUrl(), size: att.getSize() });
+        } catch (attErr) {
+          Logger.log('saveEmailPDFs: failed to save attachment "' + att.getName() + '": ' + attErr.message);
+          if (typeof logError === 'function') {
+            logError('saveEmailPDFs', 'Failed to save PDF attachment', { sampleId: sampleId, fileName: att.getName(), error: attErr.message });
+          }
+          // Continue — save the rest even if one fails
+        }
       }
     }
-  } catch (e) { Logger.log('saveEmailPDFs error: ' + e); }
+  } catch (e) {
+    Logger.log('saveEmailPDFs error: ' + e);
+    if (typeof logError === 'function') {
+      logError('saveEmailPDFs', 'DriveApp error saving PDFs', { sampleId: sampleId, error: e.message });
+    }
+  }
   return saved;
 }
 
@@ -1802,13 +1860,26 @@ function saveEmailImages(message, sampleId) {
       if (imageTypes.indexOf(contentType) >= 0 ||
           name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') || name.endsWith('.gif')) {
         if (att.getSize() < 5000) continue;
-        var fileName = sampleId + '_' + att.getName();
-        var file = folder.createFile(att.copyBlob().setName(fileName));
-        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        saved.push({ name: att.getName(), url: file.getUrl(), size: att.getSize() });
+        try {
+          var fileName = sampleId + '_' + att.getName();
+          var file = folder.createFile(att.copyBlob().setName(fileName));
+          file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+          saved.push({ name: att.getName(), url: file.getUrl(), size: att.getSize() });
+        } catch (attErr) {
+          Logger.log('saveEmailImages: failed to save image "' + att.getName() + '": ' + attErr.message);
+          if (typeof logError === 'function') {
+            logError('saveEmailImages', 'Failed to save image attachment', { sampleId: sampleId, fileName: att.getName(), error: attErr.message });
+          }
+          // Continue — save the rest even if one fails
+        }
       }
     }
-  } catch (e) { Logger.log('saveEmailImages error: ' + e); }
+  } catch (e) {
+    Logger.log('saveEmailImages error: ' + e);
+    if (typeof logError === 'function') {
+      logError('saveEmailImages', 'DriveApp error saving images', { sampleId: sampleId, error: e.message });
+    }
+  }
   return saved;
 }
 
@@ -1932,7 +2003,7 @@ function escapeCSVField(field) {
 
 function validateOrderData(data) {
   var errors = [];
-  if (!data) return { valid: true, errors: [] };
+  if (!data) return { valid: false, errors: ['No data provided'] };
 
   if (data.container) {
     var container = String(data.container).trim().toUpperCase();

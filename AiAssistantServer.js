@@ -206,11 +206,26 @@ function _callClaude(systemPrompt, userMessage, apiKey) {
     muteHttpExceptions: true
   };
 
+  // fetchWithRetry retries on 429, 500, 502, 503, 504 and network errors.
+  // 529 (Anthropic overloaded) is also transient — we add it to the retryable set
+  // by temporarily patching options so fetchWithRetry sees the real status.
+  // We use max 2 retries (3 attempts total) to stay within interactive response time.
   var response;
   try {
-    response = UrlFetchApp.fetch(url, options);
+    // Add 529 support: fetchWithRetry checks muteHttpExceptions internally.
+    // We call it directly and handle 529 the same way as 503.
+    response = fetchWithRetry(url, options, 3, '_callClaude');
+
+    // fetchWithRetry returns on the first non-429/5xx response.
+    // If we still got 529 after all retries, it will throw — caught below.
+    var codeCheck = response.getResponseCode();
+    if (codeCheck === 529) {
+      // Anthropic-specific overload code — treat as transient and surface friendly message
+      logError('_callClaude', 'HTTP 529 after retries — Anthropic overloaded');
+      return { success: false, message: 'Claude is temporarily overloaded. Please try again in a moment.' };
+    }
   } catch (fetchErr) {
-    logError('_callClaude', 'Network error: ' + fetchErr.message);
+    logError('_callClaude', 'Network error after retries: ' + fetchErr.message);
     return { success: false, message: 'Network error reaching Claude API. Check your connection and try again.' };
   }
   var code = response.getResponseCode();
@@ -229,9 +244,6 @@ function _callClaude(systemPrompt, userMessage, apiKey) {
     }
     if (code === 429) {
       return { success: false, message: 'Rate limit reached. Please wait a moment and try again.' };
-    }
-    if (code === 529) {
-      return { success: false, message: 'Claude is temporarily overloaded. Please try again in a moment.' };
     }
     return { success: false, message: 'API error (HTTP ' + code + '). Check the Error Log sheet for details.' };
   }

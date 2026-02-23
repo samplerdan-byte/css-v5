@@ -98,11 +98,22 @@ function sendMorningBriefing() {
       '\nYesterday: ' + b.receivedYesterday.length + ' in, ' + b.shippedYesterday.length + ' out' +
       '\nPending: ' + b.pendingUnscanned.length + ' unscanned, ' + b.scannedReady.length + ' ready';
 
+    // QUOTA GUARD: Check email quota before sending
+    var emailQuota = (typeof _quotaCheckEmailQuota === 'function') ? _quotaCheckEmailQuota() : { canSend: true, remaining: 100, countToday: 0, limit: 1500 };
+    if (!emailQuota.canSend) {
+      var quotaErr = 'sendMorningBriefing: Email quota exhausted (' + emailQuota.countToday + '/' + emailQuota.limit + ' today)';
+      Logger.log(quotaErr);
+      if (typeof logError === 'function') logError('sendMorningBriefing', 'Email quota exhausted', { count: emailQuota.countToday, limit: emailQuota.limit });
+      throw new Error(quotaErr);
+    }
+
     MailApp.sendEmail({ to: BRIEFING_CONFIG.recipientEmail, subject: subject, body: plain, htmlBody: html });
-    Logger.log('sendMorningBriefing: briefing sent to ' + BRIEFING_CONFIG.recipientEmail);
+    // QUOTA GUARD: Log the send
+    if (typeof _quotaLogEmailSend === 'function') _quotaLogEmailSend();
+    Logger.log('sendMorningBriefing: briefing sent to ' + BRIEFING_CONFIG.recipientEmail + ' (' + emailQuota.remaining + ' sends remaining)');
 
     try { SpreadsheetApp.getUi().alert('✅ Briefing sent to ' + BRIEFING_CONFIG.recipientEmail); }
-    catch(e) {}
+    catch(e) { logError('sendMorningBriefing', 'Error showing alert (non-critical)', { error: e.message }); }
   } catch(e) {
     Logger.log('sendMorningBriefing: error: ' + e.message);
     if (typeof logError === 'function') logError('sendMorningBriefing', 'Error sending briefing email', { recipient: BRIEFING_CONFIG.recipientEmail, error: e.message });

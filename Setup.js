@@ -414,9 +414,10 @@ function setupFieldReportEditors() {
       sheet.setColumnWidth(notesIdx + 1, 400);
       var lastRow = sheet.getLastRow();
       if (lastRow >= 2 && lastRow <= 10000) { // Guard against absurdly large sheets
-        for (var r = 2; r <= lastRow; r++) {
-          sheet.getRange(r, notesIdx + 1).setValue('ALL');
-        }
+        // V5: perf — batch-fill ALL rows at once (N setValue → 1 setValues)
+        var allVals = [];
+        for (var r = 2; r <= lastRow; r++) allVals.push(['ALL']);
+        sheet.getRange(2, notesIdx + 1, allVals.length, 1).setValues(allVals);
       }
       SpreadsheetApp.getUi().alert(
         '✅ Field Report Editors sheet upgraded!\n\n' +
@@ -431,25 +432,14 @@ function setupFieldReportEditors() {
   }
 
   sheet = ss.insertSheet('Field Report Editors');
-  sheet.getRange(1, 1).setValue('Email');
-  sheet.getRange(1, 2).setValue('Name');
-  sheet.getRange(1, 3).setValue('Allowed Columns');
-  sheet.getRange(1, 4).setValue('Notes');
 
-  sheet.getRange(2, 1).setValue(Session.getActiveUser().getEmail());
-  sheet.getRange(2, 2).setValue('Owner');
-  sheet.getRange(2, 3).setValue('ALL');
-  sheet.getRange(2, 4).setValue('Full access — auto-added on setup');
-
-  sheet.getRange(3, 1).setValue('warehouse@example.com');
-  sheet.getRange(3, 2).setValue('Example — Warehouse Staff');
-  sheet.getRange(3, 3).setValue('Container Status, Shipping Notes, Container ETA, Cargo #');
-  sheet.getRange(3, 4).setValue('DELETE THIS ROW — example only');
-
-  sheet.getRange(4, 1).setValue('field@example.com');
-  sheet.getRange(4, 2).setValue('Example — Field Worker');
-  sheet.getRange(4, 3).setValue('Container Status, Shipping Notes, Container ETA');
-  sheet.getRange(4, 4).setValue('DELETE THIS ROW — example only');
+  // V5: perf — batch all initial cell writes into two setValues calls (12 setValue → 2 setValues)
+  sheet.getRange(1, 1, 1, 4).setValues([['Email', 'Name', 'Allowed Columns', 'Notes']]);
+  sheet.getRange(2, 1, 3, 4).setValues([
+    [Session.getActiveUser().getEmail(), 'Owner', 'ALL', 'Full access — auto-added on setup'],
+    ['warehouse@example.com', 'Example — Warehouse Staff', 'Container Status, Shipping Notes, Container ETA, Cargo #', 'DELETE THIS ROW — example only'],
+    ['field@example.com', 'Example — Field Worker', 'Container Status, Shipping Notes, Container ETA', 'DELETE THIS ROW — example only']
+  ]);
 
   sheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#2E5339').setFontColor('#fff');
   sheet.setColumnWidth(1, 260);
@@ -457,9 +447,12 @@ function setupFieldReportEditors() {
   sheet.setColumnWidth(3, 400);
   sheet.setColumnWidth(4, 200);
 
-  sheet.getRange(6, 1).setValue('📋 Valid column names for "Allowed Columns":');
-  sheet.getRange(7, 1).setValue('ALL = everything  |  Or pick from:');
-  sheet.getRange(8, 1).setValue('Reference, Description, Mark #, Container #, Cargo #, Receiver, Bag Count, Sample Weight, Shipping Line, Shipping Notes, Container Status, Container ETA');
+  // V5: perf — batch the 3 info rows into one setValues call
+  sheet.getRange(6, 1, 3, 1).setValues([
+    ['📋 Valid column names for "Allowed Columns":'],
+    ['ALL = everything  |  Or pick from:'],
+    ['Reference, Description, Mark #, Container #, Cargo #, Receiver, Bag Count, Sample Weight, Shipping Line, Shipping Notes, Container Status, Container ETA']
+  ]);
   sheet.getRange(6, 1, 3, 1).setFontColor('#666').setFontStyle('italic');
 
   SpreadsheetApp.getUi().alert(

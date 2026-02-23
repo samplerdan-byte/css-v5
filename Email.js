@@ -111,6 +111,15 @@ function sendDailyCustomerReports() {
   if (response !== ui.Button.YES) return;
 
   // Single pass: send emails and log results
+  // QUOTA GUARD: Check email quota before sending batch
+  var emailQuota = (typeof _quotaCheckEmailQuota === 'function') ? _quotaCheckEmailQuota() : { remaining: 100 };
+  var emailsToSend = Object.keys(customerSamples).length;
+  if (emailsToSend > emailQuota.remaining) {
+    var warningMsg = 'sendDailyCustomerReports: Email quota warning — need ' + emailsToSend + ' sends but only ' + emailQuota.remaining + ' remaining today.';
+    Logger.log(warningMsg);
+    if (typeof logWarning === 'function') logWarning('sendDailyCustomerReports', 'Email quota low', { needed: emailsToSend, remaining: emailQuota.remaining });
+  }
+
   for (const pattern in customerSamples) {
     const config = customerEmails[pattern];
     const samples = customerSamples[pattern];
@@ -144,6 +153,12 @@ function sendDailyCustomerReports() {
 
       let sendStatus = 'Unknown';
     try {
+      // QUOTA GUARD: Check email quota before each send
+      var quota = (typeof _quotaCheckEmailQuota === 'function') ? _quotaCheckEmailQuota() : { remaining: 100, countToday: 0 };
+      if (!quota.canSend) {
+        throw new Error('Email quota exhausted (' + quota.countToday + '/' + quota.limit + ' today)');
+      }
+
       if (!config.emails || config.emails.length === 0) {
         throw new Error('No valid email addresses configured');
       }
@@ -155,6 +170,8 @@ function sendDailyCustomerReports() {
       GmailApp.sendEmail(validEmails.join(','), subject, '', { htmlBody: body });
       sent++;
       sendStatus = 'Sent';
+      // QUOTA GUARD: Log the send
+      if (typeof _quotaLogEmailSend === 'function') _quotaLogEmailSend();
       Logger.log('sendDailyCustomerReports: Sent report to ' + config.name + ': ' + validEmails.join(', '));
     } catch (e) {
       sendStatus = 'Failed: ' + e.message;
