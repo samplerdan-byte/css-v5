@@ -153,7 +153,14 @@ function _easyPostFetch(endpoint, payload) {
 
   if (code >= 400) {
     var errMsg = 'EasyPost API error (' + code + ')';
-    if (body.error && body.error.message) errMsg += ': ' + body.error.message;
+    if (body.error && body.error.message) {
+      // Scrub API key from error messages before logging or returning
+      var safeErrMsg = String(body.error.message);
+      if (apiKey && apiKey.length > 8) {
+        safeErrMsg = safeErrMsg.replace(new RegExp(apiKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '[REDACTED]');
+      }
+      errMsg += ': ' + safeErrMsg;
+    }
     Logger.log(errMsg + ' on POST ' + endpoint);
     throw new Error(errMsg);
   }
@@ -193,7 +200,13 @@ function _easyPostGet(endpoint) {
 
   if (code >= 400) {
     var errMsg = 'EasyPost API error (' + code + ')';
-    if (body.error && body.error.message) errMsg += ': ' + body.error.message;
+    if (body.error && body.error.message) {
+      var safeErrMsg = String(body.error.message);
+      if (apiKey && apiKey.length > 8) {
+        safeErrMsg = safeErrMsg.replace(new RegExp(apiKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '[REDACTED]');
+      }
+      errMsg += ': ' + safeErrMsg;
+    }
     Logger.log(errMsg + ' on GET ' + endpoint);
     throw new Error(errMsg);
   }
@@ -452,6 +465,12 @@ function buyLabelForShipment(shipmentId, rateId) {
   if (!shipmentId) throw new Error('shipmentId is required');
   if (!rateId) throw new Error('rateId is required');
 
+  // Validate IDs contain only safe characters (EasyPost IDs are alphanumeric with underscores)
+  shipmentId = String(shipmentId);
+  rateId = String(rateId);
+  if (!/^[a-zA-Z0-9_\-]+$/.test(shipmentId)) throw new Error('Invalid shipment ID format');
+  if (!/^[a-zA-Z0-9_\-]+$/.test(rateId)) throw new Error('Invalid rate ID format');
+
   Logger.log('buyLabelForShipment: shipment=' + shipmentId + ', rate=' + rateId);
   var result = _easyPostFetch('/shipments/' + shipmentId + '/buy', {
     rate: { id: rateId }
@@ -709,6 +728,10 @@ function generateLabelsForBatch(sampleIds, parcelOverrides) {
 function voidShipment(shipmentId) {
   if (!shipmentId) return { success: false, error: 'shipmentId is required' };
 
+  // Validate shipmentId format to prevent path injection
+  shipmentId = String(shipmentId);
+  if (!/^[a-zA-Z0-9_\-]+$/.test(shipmentId)) return { success: false, error: 'Invalid shipment ID format' };
+
   try {
     Logger.log('voidShipment: ' + shipmentId);
     var result = _easyPostFetch('/shipments/' + shipmentId + '/refund', {});
@@ -760,6 +783,7 @@ function showLabelGenerator() {
     '<div id="status"></div>' +
     '<div id="result"></div>' +
     '<script>' +
+    'function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML;}' +
     'function generate() {' +
     '  var sid = document.getElementById("sampleId").value.trim();' +
     '  if (!sid) { alert("Enter a sample ID"); return; }' +
@@ -778,12 +802,16 @@ function showLabelGenerator() {
     '      var el = document.getElementById("result");' +
     '      if (r.success) {' +
     '        el.className = "result-ok";' +
-    '        el.innerHTML = ' +
-    '          \'<div class="result-row"><span class="result-label">Tracking:</span><span>\' + r.trackingNumber + \'</span></div>\' +' +
-    '          \'<div class="result-row"><span class="result-label">Carrier:</span><span>\' + r.carrier + \' \' + r.service + \'</span></div>\' +' +
-    '          \'<div class="result-row"><span class="result-label">Rate:</span><span>$\' + r.rate + \'</span></div>\' +' +
-    '          \'<div class="result-row"><span class="result-label">Billed To:</span><span>\' + r.billedTo + \'</span></div>\' +' +
-    '          (r.labelUrl ? \'<div style="margin-top:8px;text-align:center"><a href="\' + r.labelUrl + \'" target="_blank">📄 Open Label PDF</a></div>\' : \'\');' +
+    '        var h = \'<div class="result-row"><span class="result-label">Tracking:</span><span>\' + esc(r.trackingNumber) + \'</span></div>\';' +
+    '        h += \'<div class="result-row"><span class="result-label">Carrier:</span><span>\' + esc(r.carrier) + \' \' + esc(r.service) + \'</span></div>\';' +
+    '        h += \'<div class="result-row"><span class="result-label">Rate:</span><span>$\' + esc(r.rate) + \'</span></div>\';' +
+    '        h += \'<div class="result-row"><span class="result-label">Billed To:</span><span>\' + esc(r.billedTo) + \'</span></div>\';' +
+    '        if (r.labelUrl) {' +
+    '          var a = document.createElement("a"); a.href = r.labelUrl; a.target = "_blank"; a.textContent = "📄 Open Label PDF";' +
+    '          h += \'<div style="margin-top:8px;text-align:center" id="labelLink"></div>\';' +
+    '          el.innerHTML = h;' +
+    '          document.getElementById("labelLink").appendChild(a);' +
+    '        } else { el.innerHTML = h; }' +
     '      } else {' +
     '        el.className = "result-err";' +
     '        el.textContent = r.error;' +
@@ -843,6 +871,7 @@ function showTrackPackage() {
     '<div id="status"></div>' +
     '<div id="result"></div>' +
     '<script>' +
+    'function esc(s){var d=document.createElement("div");d.textContent=s||"";return d.innerHTML;}' +
     'function doTrack() {' +
     '  var num = document.getElementById("trackNum").value.trim();' +
     '  if (!num) { alert("Enter a tracking number"); return; }' +
@@ -854,18 +883,18 @@ function showTrackPackage() {
     '      document.getElementById("trackBtn").disabled = false;' +
     '      document.getElementById("status").textContent = "";' +
     '      var el = document.getElementById("result");' +
-    '      if (r.error) { el.innerHTML = \'<div style="color:#c62828">\' + r.error + \'</div>\'; el.style.display = "block"; return; }' +
+    '      if (r.error) { el.textContent = r.error; el.style.color = "#c62828"; el.style.display = "block"; return; }' +
     '      var statusCls = r.status === "delivered" ? "status-delivered" : (r.status === "in_transit" ? "status-transit" : "status-other");' +
-    '      var h = \'<span class="status-badge \' + statusCls + \'">\' + (r.status || "unknown").toUpperCase() + \'</span>\';' +
-    '      h += \'<div style="font-size:12px;color:#666;margin-bottom:6px">Carrier: \' + (r.carrier || "?") + \'</div>\';' +
-    '      if (r.estDelivery) h += \'<div style="font-size:12px;color:#666">Est. Delivery: \' + r.estDelivery + \'</div>\';' +
+    '      var h = \'<span class="status-badge \' + esc(statusCls) + \'">\' + esc((r.status || "unknown").toUpperCase()) + \'</span>\';' +
+    '      h += \'<div style="font-size:12px;color:#666;margin-bottom:6px">Carrier: \' + esc(r.carrier || "?") + \'</div>\';' +
+    '      if (r.estDelivery) h += \'<div style="font-size:12px;color:#666">Est. Delivery: \' + esc(r.estDelivery) + \'</div>\';' +
     '      if (r.trackingDetails && r.trackingDetails.length > 0) {' +
     '        h += \'<ul class="timeline">\';' +
     '        for (var i = 0; i < Math.min(r.trackingDetails.length, 15); i++) {' +
     '          var td = r.trackingDetails[i];' +
-    '          h += \'<li>\' + td.message;' +
-    '          if (td.city || td.state) h += \' <span class="tl-loc">(\' + [td.city, td.state].filter(Boolean).join(", ") + \')</span>\';' +
-    '          if (td.datetime) h += \'<br><span class="tl-date">\' + new Date(td.datetime).toLocaleString() + \'</span>\';' +
+    '          h += \'<li>\' + esc(td.message);' +
+    '          if (td.city || td.state) h += \' <span class="tl-loc">(\' + esc([td.city, td.state].filter(Boolean).join(", ")) + \')</span>\';' +
+    '          if (td.datetime) h += \'<br><span class="tl-date">\' + esc(new Date(td.datetime).toLocaleString()) + \'</span>\';' +
     '          h += \'</li>\';' +
     '        }' +
     '        h += \'</ul>\';' +
@@ -877,7 +906,8 @@ function showTrackPackage() {
     '      document.getElementById("trackBtn").disabled = false;' +
     '      document.getElementById("status").textContent = "";' +
     '      var el = document.getElementById("result");' +
-    '      el.innerHTML = \'<div style="color:#c62828">\' + e.message + \'</div>\';' +
+    '      el.textContent = e.message;' +
+    '      el.style.color = "#c62828";' +
     '      el.style.display = "block";' +
     '    })' +
     '    .trackPackage(num);' +

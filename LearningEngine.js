@@ -39,7 +39,9 @@ var LEARN_CONFIG = {
 // ============================================================
 
 function setupLearningSystem() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  try {
+    Logger.log('setupLearningSystem() called');
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
 
   var logSheet = ss.getSheetByName(LEARN_CONFIG.logSheetName);
   if (!logSheet) {
@@ -75,16 +77,21 @@ function setupLearningSystem() {
     rulesSheet.setColumnWidth(6, 200);
   }
 
-  SpreadsheetApp.getUi().alert(
-    'Learning System Ready!\n\n' +
-    '• "Extraction Log" sheet created\n' +
-    '• "Correction Rules" sheet created\n\n' +
-    'Workflow:\n' +
-    '1. Process emails as normal\n' +
-    '2. Fix any wrong data in All Orders\n' +
-    '3. Run "Learn from Corrections" to teach the system\n' +
-    '4. Future emails auto-apply your corrections'
-  );
+    SpreadsheetApp.getUi().alert(
+      'Learning System Ready!\n\n' +
+      '• "Extraction Log" sheet created\n' +
+      '• "Correction Rules" sheet created\n\n' +
+      'Workflow:\n' +
+      '1. Process emails as normal\n' +
+      '2. Fix any wrong data in All Orders\n' +
+      '3. Run "Learn from Corrections" to teach the system\n' +
+      '4. Future emails auto-apply your corrections'
+    );
+    Logger.log('setupLearningSystem: complete');
+  } catch (e) {
+    Logger.log('setupLearningSystem: error: ' + e.message);
+    if (typeof logError === 'function') logError('setupLearningSystem', 'Error setting up learning system', { error: e.message });
+  }
 }
 
 
@@ -94,9 +101,13 @@ function setupLearningSystem() {
 
 function logExtraction(sampleData, emailMeta) {
   try {
+    Logger.log('logExtraction: logging extraction for sample: ' + (sampleData.csSampleNum || 'unknown'));
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var logSheet = ss.getSheetByName(LEARN_CONFIG.logSheetName);
-    if (!logSheet) return;
+    if (!logSheet) {
+      Logger.log('logExtraction: log sheet not found, skipping');
+      return;
+    }
 
     var senderPattern = _buildSenderPattern(
       emailMeta ? emailMeta.from : '',
@@ -134,9 +145,11 @@ function logExtraction(sampleData, emailMeta) {
     }
 
     logSheet.appendRow(row);
+    Logger.log('logExtraction: logged extraction successfully');
 
   } catch (e) {
-    Logger.log('logExtraction error (non-fatal): ' + e);
+    Logger.log('logExtraction: error (non-fatal): ' + e.message);
+    if (typeof logError === 'function') logError('logExtraction', 'Error logging extraction (non-fatal)', { sample: sampleData.csSampleNum, error: e.message });
   }
 }
 
@@ -147,8 +160,9 @@ function logExtraction(sampleData, emailMeta) {
 
 function learnFromCorrections() {
   try {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var ui = SpreadsheetApp.getUi();
+    Logger.log('learnFromCorrections() called');
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ui = SpreadsheetApp.getUi();
 
   var logSheet = ss.getSheetByName(LEARN_CONFIG.logSheetName);
   if (!logSheet || logSheet.getLastRow() < 2) {
@@ -304,21 +318,22 @@ function learnFromCorrections() {
     }
   }
 
-  Logger.log('learnFromCorrections: ' + corrections.length + ' corrections, ' +
-    newRules + ' new rules, ' + updatedRules + ' updated, ' + activeRules + ' active');
+    Logger.log('learnFromCorrections: ' + corrections.length + ' corrections detected, ' +
+      newRules + ' new rules, ' + updatedRules + ' updated, ' + activeRules + ' active');
 
-  ui.alert(
-    'Learning Complete!\n\n' +
-    corrections.length + ' correction(s) detected\n' +
-    newRules + ' new rule(s) created\n' +
-    updatedRules + ' existing rule(s) updated\n' +
-    activeRules + ' rule(s) now auto-applying\n\n' +
-    'Rules need ' + LEARN_CONFIG.minConfidence + '+ occurrences to auto-apply.\n' +
-    'You can also set any rule to YES manually in the Correction Rules sheet.'
-  );
+    ui.alert(
+      'Learning Complete!\n\n' +
+      corrections.length + ' correction(s) detected\n' +
+      newRules + ' new rule(s) created\n' +
+      updatedRules + ' existing rule(s) updated\n' +
+      activeRules + ' rule(s) now auto-applying\n\n' +
+      'Rules need ' + LEARN_CONFIG.minConfidence + '+ occurrences to auto-apply.\n' +
+      'You can also set any rule to YES manually in the Correction Rules sheet.'
+    );
 
   } catch (e) {
-    Logger.log('learnFromCorrections error: ' + e);
+    Logger.log('learnFromCorrections: error: ' + e.message);
+    if (typeof logError === 'function') logError('learnFromCorrections', 'Error learning from corrections', { error: e.message });
     try { SpreadsheetApp.getUi().alert('Error in Learn from Corrections: ' + e); } catch(e2) {}
   }
 }
@@ -335,9 +350,13 @@ function learnFromCorrections() {
 
 function applyCorrections(sampleData, senderEmail) {
   try {
+    Logger.log('applyCorrections: applying rules for sender: ' + senderEmail);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var rulesSheet = ss.getSheetByName(LEARN_CONFIG.rulesSheetName);
-    if (!rulesSheet || rulesSheet.getLastRow() < 2) return sampleData;
+    if (!rulesSheet || rulesSheet.getLastRow() < 2) {
+      Logger.log('applyCorrections: no rules sheet or no rules found');
+      return sampleData;
+    }
 
     var senderPattern = _buildSenderPattern(senderEmail, sampleData.sender || '');
 
@@ -403,6 +422,10 @@ function applyCorrections(sampleData, senderEmail) {
           Logger.log('Learning: ' + rule.field + ' (empty) -> "' + rule.correctedValue + '"');
         }
       } else if (rule.ruleType === 'REGEX_MAP') {
+        if (!rule.matchValue || typeof rule.matchValue !== 'string') {
+          Logger.log('Learning: invalid regex pattern in rule');
+          continue;
+        }
         try {
           var re = new RegExp(rule.matchValue, 'i');
           if (re.test(currentVal)) {
@@ -411,7 +434,7 @@ function applyCorrections(sampleData, senderEmail) {
             Logger.log('Learning: ' + rule.field + ' regex matched -> "' + rule.correctedValue + '"');
           }
         } catch (regexErr) {
-          Logger.log('Learning: bad regex in rule: ' + rule.matchValue);
+          Logger.log('Learning: bad regex in rule: ' + rule.matchValue + ' (error: ' + regexErr.message + ')');
         }
       }
     }
@@ -423,7 +446,8 @@ function applyCorrections(sampleData, senderEmail) {
     return sampleData;
 
   } catch (e) {
-    Logger.log('applyCorrections error (non-fatal): ' + e);
+    Logger.log('applyCorrections: error (non-fatal): ' + e.message);
+    if (typeof logError === 'function') logError('applyCorrections', 'Error applying corrections (non-fatal)', { sender: senderEmail, error: e.message });
     return sampleData;
   }
 }
@@ -434,8 +458,10 @@ function applyCorrections(sampleData, senderEmail) {
 // ============================================================
 
 function showLearningDashboard() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var rulesSheet = ss.getSheetByName(LEARN_CONFIG.rulesSheetName);
+  try {
+    Logger.log('showLearningDashboard() called');
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var rulesSheet = ss.getSheetByName(LEARN_CONFIG.rulesSheetName);
 
   var totalRules = 0;
   var activeRules = 0;
@@ -509,9 +535,14 @@ function showLearningDashboard() {
     '<div class="note">Rules auto-apply after ' + LEARN_CONFIG.minConfidence + '+ matching corrections.<br>Override manually by setting Auto Apply to YES in the rules sheet.</div>' +
     '</div>';
 
-  var html = HtmlService.createHtmlOutput(htmlStr)
-    .setWidth(380).setHeight(550).setTitle('Learning System');
-  SpreadsheetApp.getUi().showSidebar(html);
+    var html = HtmlService.createHtmlOutput(htmlStr)
+      .setWidth(380).setHeight(550).setTitle('Learning System');
+    SpreadsheetApp.getUi().showSidebar(html);
+    Logger.log('showLearningDashboard: displayed dashboard');
+  } catch (e) {
+    Logger.log('showLearningDashboard: error: ' + e.message);
+    if (typeof logError === 'function') logError('showLearningDashboard', 'Error displaying learning dashboard', { error: e.message });
+  }
 }
 
 function showRulesSheet() {
@@ -530,36 +561,43 @@ function showRulesSheet() {
 // ============================================================
 
 function resetSenderRules() {
-  var ui = SpreadsheetApp.getUi();
-  var response = ui.prompt(
-    'Reset Sender Rules',
-    'Enter sender pattern to clear rules for (e.g. "louis dreyfus"):',
-    ui.ButtonSet.OK_CANCEL
-  );
+  try {
+    Logger.log('resetSenderRules() called');
+    var ui = SpreadsheetApp.getUi();
+    var response = ui.prompt(
+      'Reset Sender Rules',
+      'Enter sender pattern to clear rules for (e.g. "louis dreyfus"):',
+      ui.ButtonSet.OK_CANCEL
+    );
 
-  if (response.getSelectedButton() !== ui.Button.OK) return;
+    if (response.getSelectedButton() !== ui.Button.OK) return;
 
-  var pattern = response.getResponseText().trim().toLowerCase();
-  if (!pattern) return;
+    var pattern = response.getResponseText().trim().toLowerCase();
+    if (!pattern) return;
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var rulesSheet = ss.getSheetByName(LEARN_CONFIG.rulesSheetName);
-  if (!rulesSheet || rulesSheet.getLastRow() < 2) {
-    ui.alert('No rules to clear.');
-    return;
-  }
-
-  var data = rulesSheet.getRange(2, 2, rulesSheet.getLastRow() - 1, 1).getValues();
-  var deleted = 0;
-
-  for (var i = data.length - 1; i >= 0; i--) {
-    if (String(data[i][0]).trim().toLowerCase().indexOf(pattern) !== -1) {
-      rulesSheet.deleteRow(i + 2);
-      deleted++;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var rulesSheet = ss.getSheetByName(LEARN_CONFIG.rulesSheetName);
+    if (!rulesSheet || rulesSheet.getLastRow() < 2) {
+      ui.alert('No rules to clear.');
+      return;
     }
-  }
 
-  ui.alert('Cleared ' + deleted + ' rule(s) matching "' + pattern + '".');
+    var data = rulesSheet.getRange(2, 2, rulesSheet.getLastRow() - 1, 1).getValues();
+    var deleted = 0;
+
+    for (var i = data.length - 1; i >= 0; i--) {
+      if (String(data[i][0]).trim().toLowerCase().indexOf(pattern) !== -1) {
+        rulesSheet.deleteRow(i + 2);
+        deleted++;
+      }
+    }
+
+    Logger.log('resetSenderRules: cleared ' + deleted + ' rules for pattern: ' + pattern);
+    ui.alert('Cleared ' + deleted + ' rule(s) matching "' + pattern + '".');
+  } catch (e) {
+    Logger.log('resetSenderRules: error: ' + e.message);
+    if (typeof logError === 'function') logError('resetSenderRules', 'Error resetting sender rules', { error: e.message });
+  }
 }
 
 

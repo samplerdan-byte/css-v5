@@ -27,6 +27,7 @@ var PHOTO_CONFIG = {
 
 function webAppFindSamples(query) {
   try {
+    Logger.log('webAppFindSamples: starting with query: ' + query);
     if (!query || !String(query).trim()) {
       return { success: false, message: 'Enter a sample #, order #, cargo #, or container #' };
     }
@@ -106,7 +107,8 @@ function webAppFindSamples(query) {
     return { success: true, matches: matches, query: query };
 
   } catch (e) {
-    Logger.log('webAppFindSamples error: ' + e);
+    Logger.log('webAppFindSamples: error: ' + e.message);
+    if (typeof logError === 'function') logError('webAppFindSamples', 'Error searching for samples', { query: query, error: e.message });
     return { success: false, message: '❌ Error: ' + e.message };
   }
 }
@@ -118,6 +120,7 @@ function webAppFindSamples(query) {
 
 function webAppLoadSamplePhotos(sampleId) {
   try {
+    Logger.log('webAppLoadSamplePhotos: loading for sample: ' + sampleId);
     if (!sampleId) return { success: false, message: 'No sample ID provided' };
     sampleId = String(sampleId).trim();
 
@@ -148,7 +151,8 @@ function webAppLoadSamplePhotos(sampleId) {
     };
 
   } catch (e) {
-    Logger.log('webAppLoadSamplePhotos error: ' + e);
+    Logger.log('webAppLoadSamplePhotos: error: ' + e.message);
+    if (typeof logError === 'function') logError('webAppLoadSamplePhotos', 'Error loading photos', { sampleId: sampleId, error: e.message });
     return { success: false, message: '❌ Error: ' + e.message };
   }
 }
@@ -227,11 +231,14 @@ function webAppUploadPhoto(sampleIds, base64Data, fileName, mimeType) {
 
 function webAppDeletePhoto(fileId) {
   try {
+    Logger.log('webAppDeletePhoto: deleting file: ' + fileId);
     var file = DriveApp.getFileById(fileId);
     var name = file.getName();
     file.setTrashed(true);
     return { success: true, message: '🗑️ Deleted: ' + name };
   } catch (e) {
+    Logger.log('webAppDeletePhoto: error: ' + e.message);
+    if (typeof logError === 'function') logError('webAppDeletePhoto', 'Error deleting photo', { fileId: fileId, error: e.message });
     return { success: false, message: '❌ Delete error: ' + e.message };
   }
 }

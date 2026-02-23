@@ -88,8 +88,8 @@ function getCustomerDefaults(customerKey) {
   try {
     if (!customerKey) return null;
 
-    // Normalize key to lowercase
-    var key = String(customerKey).toLowerCase().trim();
+    // Normalize key to lowercase with null/undefined guard
+    var key = String(customerKey || '').toLowerCase().trim();
     if (!key) return null;
 
     // Direct lookup
@@ -97,28 +97,31 @@ function getCustomerDefaults(customerKey) {
       var client = KNOWN_CLIENTS[key];
       Logger.log('getCustomerDefaults: exact match for "' + key + '"');
       return {
-        name: client.name,
-        shipping: client.defaultShipping || 'FedEx',
-        sampleWeight: client.defaultSampleSize || '2 lb',
-        warehouse: client.warehouse || '',
-        fedexAccount: client.fedexAccount || '',
+        name: String(client.name || ''),
+        shipping: String(client.defaultShipping || 'FedEx').trim(),
+        sampleWeight: String(client.defaultSampleSize || '2 lb').trim(),
+        warehouse: String(client.warehouse || '').trim(),
+        fedexAccount: String(client.fedexAccount || '').trim(),
         defaultReceiver: client.defaultReceiver || null
       };
     }
 
     // Try partial match on name
     for (var k in KNOWN_CLIENTS) {
-      if (KNOWN_CLIENTS[k].name.toLowerCase().indexOf(key) >= 0) {
-        var client2 = KNOWN_CLIENTS[k];
-        Logger.log('getCustomerDefaults: partial match "' + key + '" -> "' + client2.name + '"');
-        return {
-          name: client2.name,
-          shipping: client2.defaultShipping || 'FedEx',
-          sampleWeight: client2.defaultSampleSize || '2 lb',
-          warehouse: client2.warehouse || '',
-          fedexAccount: client2.fedexAccount || '',
-          defaultReceiver: client2.defaultReceiver || null
-        };
+      if (KNOWN_CLIENTS.hasOwnProperty(k)) {
+        var clientName = String(KNOWN_CLIENTS[k].name || '').toLowerCase();
+        if (clientName.indexOf(key) >= 0) {
+          var client2 = KNOWN_CLIENTS[k];
+          Logger.log('getCustomerDefaults: partial match "' + key + '" -> "' + client2.name + '"');
+          return {
+            name: String(client2.name || ''),
+            shipping: String(client2.defaultShipping || 'FedEx').trim(),
+            sampleWeight: String(client2.defaultSampleSize || '2 lb').trim(),
+            warehouse: String(client2.warehouse || '').trim(),
+            fedexAccount: String(client2.fedexAccount || '').trim(),
+            defaultReceiver: client2.defaultReceiver || null
+          };
+        }
       }
     }
 
@@ -145,9 +148,12 @@ function detectCustomer(content, senderEmail, subject) {
     }
     // identifyClient is defined in Emailextraction v2.gs
     if (typeof identifyClient === 'function') {
-      var allText = (content || '') + '\n' + (subject || '');
-      var result = identifyClient(senderEmail, allText);
-      Logger.log('detectCustomer: sender="' + (senderEmail || '') + '" -> ' + (result ? result.name || JSON.stringify(result) : 'null'));
+      var contentStr = String(content || '').trim();
+      var senderStr = String(senderEmail || '').trim();
+      var subjectStr = String(subject || '').trim();
+      var allText = contentStr + '\n' + subjectStr;
+      var result = identifyClient(senderStr, allText);
+      Logger.log('detectCustomer: sender="' + senderStr + '" -> ' + (result ? result.name || JSON.stringify(result) : 'null'));
       return result;
     }
     Logger.log('detectCustomer: identifyClient not available');
@@ -173,23 +179,23 @@ function parseEmailOrder(emailBody, fromEmail, subject) {
     }
     // extractOrderFromEmail is defined in Emailextraction v2.gs
     if (typeof extractOrderFromEmail === 'function') {
-      var result = extractOrderFromEmail(emailBody, '', fromEmail, subject);
+      var result = extractOrderFromEmail(String(emailBody || ''), '', String(fromEmail || ''), String(subject || ''));
       if (result && result.success && result.orders && result.orders.length > 0) {
         var order = result.orders[0];
         Logger.log('parseEmailOrder: parsed order for client "' + (result.client ? result.client.name : 'Unknown') + '"');
         return {
-          client: result.client ? result.client.name : 'Unknown',
-          sampleOrderNum: order.sampleOrderNum || '',
-          container: order.container || '',
-          mark: order.mark || '',
-          cargo: order.cargo || '',
-          reference: order.reference || '',
-          warehouse: order.warehouse || '',
-          receiver: order.receiver || '',
-          sampleSize: order.sampleSize || '2 lb',
-          shipping: order.shipping || 'FedEx',
-          description: order.description || '',
-          bags: order.bags || '',
+          client: String(result.client && result.client.name ? result.client.name : 'Unknown').trim(),
+          sampleOrderNum: String(order.sampleOrderNum || '').trim(),
+          container: String(order.container || '').trim(),
+          mark: String(order.mark || '').trim(),
+          cargo: String(order.cargo || '').trim(),
+          reference: String(order.reference || '').trim(),
+          warehouse: String(order.warehouse || '').trim(),
+          receiver: String(order.receiver || '').trim(),
+          sampleSize: String(order.sampleSize || '2 lb').trim(),
+          shipping: String(order.shipping || 'FedEx').trim(),
+          description: String(order.description || '').trim(),
+          bags: String(order.bags || '').trim(),
           flags: result.flags || []
         };
       }
@@ -213,7 +219,8 @@ function parseEmailOrder(emailBody, fromEmail, subject) {
 
 function extractCommonFields(text) {
   try {
-    if (!text) {
+    var textStr = String(text || '').trim();
+    if (!textStr) {
       Logger.log('extractCommonFields: empty text input');
       return { containers: [], marks: [], cargos: [], bags: [] };
     }
@@ -227,16 +234,16 @@ function extractCommonFields(text) {
 
     // Use the extraction functions from Emailextraction v2.gs
     if (typeof extractContainers === 'function') {
-      fields.containers = extractContainers(text) || [];
+      fields.containers = extractContainers(textStr) || [];
     }
     if (typeof extractMarks === 'function') {
-      fields.marks = extractMarks(text) || [];
+      fields.marks = extractMarks(textStr) || [];
     }
     if (typeof extractCargos === 'function') {
-      fields.cargos = extractCargos(text) || [];
+      fields.cargos = extractCargos(textStr) || [];
     }
     if (typeof extractBagCounts === 'function') {
-      fields.bags = extractBagCounts(text) || [];
+      fields.bags = extractBagCounts(textStr) || [];
     }
 
     Logger.log('extractCommonFields: containers=' + fields.containers.length +

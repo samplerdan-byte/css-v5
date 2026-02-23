@@ -43,6 +43,7 @@ function getClientIndex() {
   var headers = allSheet.getRange(1, 1, 1, lastCol).getValues()[0];
   var allData = allSheet.getRange(1, 1, lastRow, lastCol).getValues();
   var sampleCol = findSampleColumn(headers);
+  if (sampleCol === -1) return { error: 'CS Sample # column not found in All Orders sheet' };
 
   var cols = {
     sample: sampleCol,
@@ -170,8 +171,9 @@ function scanOutShip(row, cols, trackingNum) {
     // Read the sample ID at that row to verify
     var col = _getColumnMap(sheet);
     var sampleIdx = col['CS Sample #'];
+    if (sampleIdx === undefined) return { success: false, message: 'CS Sample # column not found' };
     var sampleId = String(sheet.getRange(row, sampleIdx + 1).getValue()).trim();
-    
+
     if (!sampleId) return { success: false, message: 'No sample at row ' + row };
     
     // Now find the ACTUAL current row for this sample

@@ -32,9 +32,10 @@ function setupSheet() {
     const statusCol = statusColIdx + 1;
     const statusRange = mainSheet.getRange(2, statusCol, lastRow - 1, 1);
     const statusValues = statusRange.getValues();
-    const updatedValues = statusValues.map(row =>
-      row[0] === '' ? [CONFIG.statusValues.RECEIVED] : row
-    );
+    const updatedValues = statusValues.map(row => {
+      var cellValue = String(row[0] || '').trim();
+      return cellValue === '' ? [CONFIG.statusValues.RECEIVED || 'Received'] : row;
+    });
     statusRange.setValues(updatedValues);
   }
 
@@ -55,7 +56,7 @@ function setupSheet() {
     }
 
     const scanHeaders = ['Scan Timestamp', 'CS Order #', 'CS Sample #', 'Sample Order #', 'Cargo #', 'Mark #', 'Container #', 'Reference', 'Description', 'Bag Count', 'Weight', 'Sample Weight', 'P #', 'S #', 'Warehouse', 'Shipping Process', 'Comments', 'Scanned By', 'Notes'];
-    if (scanSheet) {
+    if (scanSheet && scanHeaders.length > 0) {
       scanSheet.getRange(1, 1, 1, scanHeaders.length).setValues([scanHeaders]);
       scanSheet.getRange(1, 1, 1, scanHeaders.length).setFontWeight('bold');
       scanSheet.setFrozenRows(1);
@@ -125,24 +126,28 @@ function setupTrackingSystem() {
     let liveSheet = ss.getSheetByName('Live Orders');
     if (!liveSheet) {
       liveSheet = ss.insertSheet('Live Orders');
-      const allHeaders = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues();
-      liveSheet.getRange(1, 1, 1, allHeaders[0].length).setValues(allHeaders);
-      liveSheet.getRange(1, 1, 1, allHeaders[0].length).setFontWeight('bold').setBackground('#d9ead3');
-      liveSheet.getRange(1, 1, 1, allHeaders[0].length).createFilter();
-      liveSheet.setFrozenRows(1);
-      Logger.log('✓ Created Live Orders sheet');
+      const mainHeaders = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues();
+      if (mainHeaders && mainHeaders.length > 0 && mainHeaders[0].length > 0) {
+        liveSheet.getRange(1, 1, 1, mainHeaders[0].length).setValues(mainHeaders);
+        liveSheet.getRange(1, 1, 1, mainHeaders[0].length).setFontWeight('bold').setBackground('#d9ead3');
+        liveSheet.getRange(1, 1, 1, mainHeaders[0].length).createFilter();
+        liveSheet.setFrozenRows(1);
+        Logger.log('✓ Created Live Orders sheet');
+      }
     }
 
     // Create Completed Orders sheet
     let completedSheet = ss.getSheetByName('Completed Orders');
     if (!completedSheet) {
       completedSheet = ss.insertSheet('Completed Orders');
-      const allHeaders = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues();
-      completedSheet.getRange(1, 1, 1, allHeaders[0].length).setValues(allHeaders);
-      completedSheet.getRange(1, 1, 1, allHeaders[0].length).setFontWeight('bold').setBackground('#f4cccc');
-      completedSheet.getRange(1, 1, 1, allHeaders[0].length).createFilter();
-      completedSheet.setFrozenRows(1);
-      Logger.log('✓ Created Completed Orders sheet');
+      const mainHeaders = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues();
+      if (mainHeaders && mainHeaders.length > 0 && mainHeaders[0].length > 0) {
+        completedSheet.getRange(1, 1, 1, mainHeaders[0].length).setValues(mainHeaders);
+        completedSheet.getRange(1, 1, 1, mainHeaders[0].length).setFontWeight('bold').setBackground('#f4cccc');
+        completedSheet.getRange(1, 1, 1, mainHeaders[0].length).createFilter();
+        completedSheet.setFrozenRows(1);
+        Logger.log('✓ Created Completed Orders sheet');
+      }
     }
 
     // Create Daily Report Log sheet
@@ -234,8 +239,13 @@ function setupConditionalFormatting() {
       return;
     }
 
-    var lastRow = Math.max(sheet.getLastRow(), 1000);
+    var lastRow = sheet.getLastRow();
     var lastCol = sheet.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) {
+      Logger.log('setupConditionalFormatting: sheet is empty');
+      SpreadsheetApp.getUi().alert('Sheet must have data and columns!');
+      return;
+    }
     var dataRange = sheet.getRange(2, 1, lastRow - 1, lastCol);
 
     var colLetter = _colToLetter(reviewCol);
@@ -287,18 +297,27 @@ function setupFieldColumns() {
     var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     var lastCol = headers.length;
 
+    // Guard against null/undefined headers
+    if (!headers || headers.length === 0) {
+      Logger.log('setupFieldColumns: no headers found');
+      ui.alert('Sheet must have headers!');
+      return;
+    }
+
     var newCols = ['Sample Type', 'Shipping Line', 'Shipping Notes', 'B/L #', 'Ship Status'];
     var added = [];
     newCols.forEach(function(colName) {
-      if (headers.indexOf(colName) === -1) {
+      var colNameStr = String(colName || '').trim();
+      if (colNameStr && headers.indexOf(colNameStr) === -1) {
         lastCol++;
-        sheet.getRange(1, lastCol).setValue(colName).setFontWeight('bold');
-        added.push(colName);
+        sheet.getRange(1, lastCol).setValue(colNameStr).setFontWeight('bold');
+        added.push(colNameStr);
       }
     });
 
     headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    var lastRow = Math.max(sheet.getLastRow(), 2);
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) lastRow = 2;
 
     var stIdx = headers.indexOf('Sample Type');
     if (stIdx !== -1 && lastRow > 1) {
@@ -350,21 +369,25 @@ function setupWarehouseEmails() {
   if (!sheet) {
     sheet = ss.insertSheet('Warehouse Emails');
     var headers = ['Warehouse', 'Emails', 'Active', 'Notes'];
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
-    sheet.setColumnWidth(1, 200);
-    sheet.setColumnWidth(2, 350);
-    sheet.setColumnWidth(3, 60);
-    sheet.setColumnWidth(4, 250);
+    if (headers.length > 0) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+      sheet.setColumnWidth(1, 200);
+      sheet.setColumnWidth(2, 350);
+      sheet.setColumnWidth(3, 60);
+      sheet.setColumnWidth(4, 250);
 
-    var sampleData = [
-      ['Continental Terminal', '', 'Y', ''],
-      ['RPM Avenel', '', 'Y', ''],
-      ['Keurig Green Mountain', '', 'Y', ''],
-      ['GreenStar', '', 'Y', ''],
-      ['Dupuy Storage', '', 'Y', '']
-    ];
-    sheet.getRange(2, 1, sampleData.length, 4).setValues(sampleData);
-    SpreadsheetApp.getUi().alert('✅ Warehouse Emails sheet created!\n\nAdd email addresses (comma-separated) for each warehouse.');
+      var sampleData = [
+        ['Continental Terminal', '', 'Y', ''],
+        ['RPM Avenel', '', 'Y', ''],
+        ['Keurig Green Mountain', '', 'Y', ''],
+        ['GreenStar', '', 'Y', ''],
+        ['Dupuy Storage', '', 'Y', '']
+      ];
+      if (sampleData.length > 0) {
+        sheet.getRange(2, 1, sampleData.length, 4).setValues(sampleData);
+      }
+      SpreadsheetApp.getUi().alert('✅ Warehouse Emails sheet created!\n\nAdd email addresses (comma-separated) for each warehouse.');
+    }
   } else {
     SpreadsheetApp.getUi().alert('Warehouse Emails sheet already exists. Opening it now.');
     ss.setActiveSheet(sheet);
@@ -378,6 +401,10 @@ function setupFieldReportEditors() {
   // Upgrade existing sheet if it has old format
   if (sheet) {
     var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (!headers || headers.length === 0) {
+      SpreadsheetApp.getUi().alert('Field Report Editors sheet has no headers. Please create it manually.');
+      return;
+    }
     if (headers.indexOf('Allowed Columns') === -1) {
       var notesIdx = headers.indexOf('Notes');
       if (notesIdx === -1) notesIdx = headers.length;
@@ -386,7 +413,7 @@ function setupFieldReportEditors() {
       sheet.getRange(1, notesIdx + 1).setValue('Allowed Columns').setFontWeight('bold').setBackground('#2E5339').setFontColor('#fff');
       sheet.setColumnWidth(notesIdx + 1, 400);
       var lastRow = sheet.getLastRow();
-      if (lastRow >= 2) {
+      if (lastRow >= 2 && lastRow <= 10000) { // Guard against absurdly large sheets
         for (var r = 2; r <= lastRow; r++) {
           sheet.getRange(r, notesIdx + 1).setValue('ALL');
         }
@@ -467,19 +494,27 @@ function lockAllHeaders() {
       }
 
       var lastCol = sheet.getLastColumn();
-      if (lastCol < 1) return;
+      if (lastCol < 1) {
+        Logger.log('lockAllHeaders: Sheet has no columns - ' + name);
+        return;
+      }
 
       var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
-      protections.forEach(function(p) {
-        if (p.getDescription() === 'Header Row - Locked') {
-          p.remove();
-        }
-      });
+      if (protections && protections.length > 0) {
+        protections.forEach(function(p) {
+          if (String(p.getDescription() || '') === 'Header Row - Locked') {
+            p.remove();
+          }
+        });
+      }
 
       var protection = sheet.getRange(1, 1, 1, lastCol).protect()
         .setDescription('Header Row - Locked');
 
-      protection.removeEditors(protection.getEditors());
+      var editors = protection.getEditors();
+      if (editors && editors.length > 0) {
+        protection.removeEditors(editors);
+      }
       if (protection.canDomainEdit()) {
         protection.setDomainEdit(false);
       }
@@ -520,13 +555,15 @@ function unlockHeaders() {
       }
 
       var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
-      protections.forEach(function(p) {
-        if (p.getDescription() === 'Header Row - Locked') {
-          p.remove();
-          unlocked.push(name);
-          Logger.log('unlockHeaders: Unlocked ' + name);
-        }
-      });
+      if (protections && protections.length > 0) {
+        protections.forEach(function(p) {
+          if (String(p.getDescription() || '') === 'Header Row - Locked') {
+            p.remove();
+            unlocked.push(name);
+            Logger.log('unlockHeaders: Unlocked ' + name);
+          }
+        });
+      }
     });
 
     Logger.log('unlockHeaders: Complete - unlocked ' + unlocked.length + ' sheets');
@@ -555,6 +592,12 @@ function syncPrintColumnToAllSheets() {
     }
 
     const mainHeaders = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues()[0];
+    if (!mainHeaders || mainHeaders.length === 0) {
+      Logger.log('syncPrintColumnToAllSheets: Main sheet has no headers');
+      ui.alert('Main sheet has no headers. Run Setup first.');
+      return;
+    }
+
     const printIdx = mainHeaders.indexOf('Print');
 
     if (printIdx === -1) {
@@ -575,13 +618,19 @@ function syncPrintColumnToAllSheets() {
     const synced = [];
 
     sheetsToSync.forEach(function(sheetName) {
-      const sheet = ss.getSheetByName(sheetName);
+      var sheetNameStr = String(sheetName || '').trim();
+      const sheet = ss.getSheetByName(sheetNameStr);
       if (!sheet) {
-        Logger.log('syncPrintColumnToAllSheets: ' + sheetName + ' not found, skipping');
+        Logger.log('syncPrintColumnToAllSheets: ' + sheetNameStr + ' not found, skipping');
         return;
       }
 
       const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      if (!headers || headers.length === 0) {
+        Logger.log('syncPrintColumnToAllSheets: ' + sheetNameStr + ' has no headers, skipping');
+        return;
+      }
+
       const existingPrintIdx = headers.indexOf('Print');
 
       if (existingPrintIdx === -1) {
@@ -597,19 +646,19 @@ function syncPrintColumnToAllSheets() {
         if (lastRow > 1) {
           sheet.getRange(2, printColNum, lastRow - 1, 1).insertCheckboxes();
         }
-        synced.push(sheetName + ' (column inserted at ' + printColNum + ')');
+        synced.push(sheetNameStr + ' (column inserted at ' + printColNum + ')');
       } else if (existingPrintIdx !== printIdx) {
         const lastRow = sheet.getLastRow();
         if (lastRow > 1) {
           sheet.getRange(2, existingPrintIdx + 1, lastRow - 1, 1).insertCheckboxes();
         }
-        synced.push(sheetName + ' (checkboxes refreshed)');
+        synced.push(sheetNameStr + ' (checkboxes refreshed)');
       } else {
         const lastRow = sheet.getLastRow();
         if (lastRow > 1) {
           sheet.getRange(2, printColNum, lastRow - 1, 1).insertCheckboxes();
         }
-        synced.push(sheetName + ' (verified)');
+        synced.push(sheetNameStr + ' (verified)');
       }
     });
 

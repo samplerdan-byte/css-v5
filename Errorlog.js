@@ -40,11 +40,16 @@ function logError(functionName, errorMessage, details) {
       }
     }
 
-    // Format details as string
+    // Format details as string — JSON.stringify is wrapped separately so a
+    // circular-reference or non-serializable value doesn't swallow the error.
     var detailsStr = '';
     if (details) {
       if (typeof details === 'object') {
-        detailsStr = JSON.stringify(details);
+        try {
+          detailsStr = JSON.stringify(details);
+        } catch (jsonErr) {
+          detailsStr = '[unserializable: ' + String(details) + ']';
+        }
       } else {
         detailsStr = String(details);
       }
@@ -162,8 +167,11 @@ function clearOldErrors(daysToKeep) {
       }
     }
 
-    // Delete from bottom up to avoid index shifting
-    for (var j = rowsToDelete.length - 1; j >= 0; j--) {
+    // rowsToDelete was built by iterating i from high to low, so it is already
+    // in descending order (largest row index first).  Deleting from index 0
+    // (largest row number) down to the end preserves sheet row positions for
+    // every subsequent deletion.
+    for (var j = 0; j < rowsToDelete.length; j++) {
       if (rowsToDelete[j] > 1) {  // Never delete header row
         sheet.deleteRow(rowsToDelete[j]);
       }

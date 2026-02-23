@@ -5,13 +5,19 @@
 function exportTodaysOrders() {
   Logger.log('exportTodaysOrders started');
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(CONFIG.mainSheetName);
+  const sheet = ss.getSheetByName(CONFIG.mainSheetName || '');
   const ui = SpreadsheetApp.getUi();
 
   if (!sheet) { ui.alert('Sheet not found!'); return; }
 
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) { ui.alert('No data to export!'); return; }
+
+  // Validate CONFIG.mainSheetName is a string
+  if (!CONFIG.mainSheetName || typeof CONFIG.mainSheetName !== 'string') {
+    ui.alert('Invalid sheet configuration');
+    return;
+  }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -35,7 +41,8 @@ function exportTodaysOrders() {
 
   let csvContent = headers.map(escapeCSVField).join(',') + '\n';
   todaysData.forEach(row => {
-    csvContent += row.map(escapeCSVField).join(',') + '\n';
+    var safeRow = row.map(function(v) { return String(v || '').trim(); });
+    csvContent += safeRow.map(escapeCSVField).join(',') + '\n';
   });
 
   const dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -59,7 +66,7 @@ function exportTodaysOrders() {
 function exportAllOrders() {
   Logger.log('exportAllOrders started');
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(CONFIG.mainSheetName);
+  const sheet = ss.getSheetByName(CONFIG.mainSheetName || '');
   const ui = SpreadsheetApp.getUi();
 
   if (!sheet) { ui.alert('Sheet not found!'); return; }
@@ -68,13 +75,15 @@ function exportAllOrders() {
   const lastCol = sheet.getLastColumn();
 
   if (lastRow < 2) { ui.alert('No data to export!'); return; }
+  if (lastCol < 1) { ui.alert('Sheet has no columns!'); return; }
 
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   const data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
 
   let csvContent = headers.map(escapeCSVField).join(',') + '\n';
   data.forEach(row => {
-    csvContent += row.map(escapeCSVField).join(',') + '\n';
+    var safeRow = row.map(function(v) { return String(v || '').trim(); });
+    csvContent += safeRow.map(escapeCSVField).join(',') + '\n';
   });
 
   const dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmmss');
@@ -98,13 +107,16 @@ function exportAllOrders() {
 function exportForSQL() {
   Logger.log('exportForSQL started');
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(CONFIG.mainSheetName);
+  const sheet = ss.getSheetByName(CONFIG.mainSheetName || '');
   const ui = SpreadsheetApp.getUi();
 
   if (!sheet) { ui.alert('Sheet not found!'); return; }
 
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) { ui.alert('No data to export!'); return; }
+
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < 1) { ui.alert('Sheet has no columns!'); return; }
 
   var col = _getColumnMap(sheet);
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
@@ -138,29 +150,29 @@ function exportForSQL() {
 
   data.forEach(row => {
     const values = [
-      typeof formatDateForSQL === 'function' ? formatDateForSQL(safeVal(row, 'Timestamp')) : safeVal(row, 'Timestamp'),
-      safeVal(row, 'CS Order #'),
-      safeVal(row, 'CS Sample #'),
-      safeVal(row, 'Sender'),
-      safeVal(row, 'Receiver'),
-      safeVal(row, 'Warehouse'),
-      safeVal(row, 'Description'),
-      safeVal(row, 'Sample Order #'),
-      safeVal(row, 'Cargo #'),
-      safeVal(row, 'Mark #'),
-      safeVal(row, 'Container #'),
-      safeVal(row, 'Reference'),
-      safeVal(row, 'Bag Count'),
-      safeVal(row, 'Weight'),
-      safeVal(row, 'Sample Weight'),
-      safeVal(row, 'Status'),
-      safeVal(row, 'Tracking Number'),
-      typeof formatDateForSQL === 'function' ? formatDateForSQL(safeVal(row, 'Shipped Date')) : safeVal(row, 'Shipped Date')
+      typeof formatDateForSQL === 'function' ? formatDateForSQL(safeVal(row, 'Timestamp')) : String(safeVal(row, 'Timestamp') || '').trim(),
+      String(safeVal(row, 'CS Order #') || '').trim(),
+      String(safeVal(row, 'CS Sample #') || '').trim(),
+      String(safeVal(row, 'Sender') || '').trim(),
+      String(safeVal(row, 'Receiver') || '').trim(),
+      String(safeVal(row, 'Warehouse') || '').trim(),
+      String(safeVal(row, 'Description') || '').trim(),
+      String(safeVal(row, 'Sample Order #') || '').trim(),
+      String(safeVal(row, 'Cargo #') || '').trim(),
+      String(safeVal(row, 'Mark #') || '').trim(),
+      String(safeVal(row, 'Container #') || '').trim(),
+      String(safeVal(row, 'Reference') || '').trim(),
+      String(safeVal(row, 'Bag Count') || '').trim(),
+      String(safeVal(row, 'Weight') || '').trim(),
+      String(safeVal(row, 'Sample Weight') || '').trim(),
+      String(safeVal(row, 'Status') || '').trim(),
+      String(safeVal(row, 'Tracking Number') || '').trim(),
+      typeof formatDateForSQL === 'function' ? formatDateForSQL(safeVal(row, 'Shipped Date')) : String(safeVal(row, 'Shipped Date') || '').trim()
     ];
 
     const escapedValues = values.map(v => {
       if (v === null || v === undefined || v === '') return 'NULL';
-      return "'" + String(v).replace(/'/g, "''") + "'";
+      return "'" + String(v || '').replace(/'/g, "''") + "'";
     });
 
     sqlStatements += 'INSERT INTO css_orders (timestamp, cs_order_num, cs_sample_num, sender, receiver, warehouse, description, sample_order_num, cargo, mark, container, reference, bag_count, weight, sample_weight, status, tracking_number, shipped_date) VALUES (' + escapedValues.join(', ') + ');\n';
@@ -213,24 +225,31 @@ function scheduledBackup() {
   Logger.log('scheduledBackup started');
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ssName = String(ss.getName() || '').trim();
+    if (!ssName) {
+      Logger.log('scheduledBackup: spreadsheet name is empty');
+      return;
+    }
+
     const dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    const backupName = ss.getName() + ' - Auto Backup ' + dateStr;
+    const backupName = ssName + ' - Auto Backup ' + dateStr;
 
     const backup = ss.copy(backupName);
     Logger.log('Scheduled backup created: ' + backupName);
 
     // Clean up old backups (keep last 7 days)
     // Use search query to find files whose name starts with the backup prefix
-    var backupPrefix = ss.getName() + ' - Auto Backup';
+    var backupPrefix = ssName + ' - Auto Backup';
     var files = DriveApp.searchFiles('title contains "' + backupPrefix.replace(/"/g, '\\"') + '"');
     var cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 7);
 
     while (files.hasNext()) {
       var file = files.next();
-      if (file.getName().indexOf(backupPrefix) === 0 && file.getDateCreated() < cutoffDate) {
+      var fileName = String(file.getName() || '').trim();
+      if (fileName.indexOf(backupPrefix) === 0 && file.getDateCreated() < cutoffDate) {
         file.setTrashed(true);
-        Logger.log('Trashed old backup: ' + file.getName());
+        Logger.log('Trashed old backup: ' + fileName);
       }
     }
   } catch (e) {

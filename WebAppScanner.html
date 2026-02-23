@@ -42,13 +42,15 @@
       box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
     }
     .tab-btn {
-      flex: 1; padding: 8px 4px; text-align: center; color: rgba(255,255,255,0.5);
-      border: none; background: none; cursor: pointer; font-size: 10px;
-      transition: color 0.2s;
+      flex: 1; padding: 10px 4px; text-align: center; color: rgba(255,255,255,0.6);
+      border: none; background: none; cursor: pointer; font-size: 11px;
+      transition: color 0.2s; min-height: 56px;
     }
-    .tab-btn .icon { font-size: 20px; display: block; margin-bottom: 2px; }
+    .tab-btn .icon { font-size: 22px; display: block; margin-bottom: 2px; }
     .tab-btn.active { color: var(--green-accent); }
     .tab-btn:hover { color: var(--white); }
+    .tab-btn:focus { outline: 2px solid var(--green-accent); outline-offset: -2px; }
+    .tab-btn:focus-visible { outline: 2px solid var(--green-accent); outline-offset: -2px; }
 
     /* ── Tab Panels ── */
     .tab-panel { display: none; padding: 15px; max-width: 600px; margin: 0 auto; }
@@ -63,8 +65,8 @@
 
     /* ── Status Banner ── */
     .status-bar {
-      padding: 10px 14px; border-radius: 8px; text-align: center;
-      font-size: 13px; font-weight: bold; margin-bottom: 12px;
+      padding: 12px 14px; border-radius: 8px; text-align: center;
+      font-size: 14px; font-weight: bold; margin-bottom: 12px;
       transition: all 0.3s;
     }
     .status-bar.ready { background: var(--green-bg); color: var(--green-mid); }
@@ -111,10 +113,11 @@
     .go-btn {
       padding: 12px 20px; font-size: 16px; font-weight: bold;
       background: var(--green-mid); color: var(--white); border: none;
-      border-radius: 8px; cursor: pointer; white-space: nowrap;
+      border-radius: 8px; cursor: pointer; white-space: nowrap; min-height: 48px;
     }
     .go-btn:hover { background: var(--green-light); }
-    .go-btn:disabled { background: #ccc; }
+    .go-btn:disabled { background: #999; cursor: not-allowed; }
+    .go-btn:focus { outline: 3px solid #ffbf00; outline-offset: 2px; }
 
     /* ── Drop Zone ── */
     .drop-zone {
@@ -134,18 +137,20 @@
     .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .form-grid.full { grid-template-columns: 1fr; }
     .form-field { margin-bottom: 2px; }
-    .form-field label { font-size: 10px; color: var(--gray-mid); text-transform: uppercase; font-weight: bold; display: block; margin-bottom: 2px; }
+    .form-field label { font-size: 12px; color: #555; text-transform: uppercase; font-weight: bold; display: block; margin-bottom: 3px; }
     .form-field input, .form-field select, .form-field textarea {
       width: 100%; padding: 10px; font-size: 14px; border: 2px solid var(--gray-light);
-      border-radius: 6px; font-family: Arial;
+      border-radius: 6px; font-family: Arial; min-height: 44px;
     }
     .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
-      border-color: var(--green-mid); outline: none;
+      border-color: var(--green-mid); outline: 3px solid rgba(46,83,57,0.25); outline-offset: 0;
     }
     .form-field.span2 { grid-column: span 2; }
 
     /* ── Buttons ── */
-    .btn { padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; }
+    .btn { padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; min-height: 48px; }
+    .btn:focus { outline: 3px solid #ffbf00; outline-offset: 2px; }
+    .btn:disabled { background: #999 !important; cursor: not-allowed; }
     .btn-primary { background: var(--green-mid); color: var(--white); }
     .btn-primary:hover { background: var(--green-light); }
     .btn-secondary { background: #6c757d; color: var(--white); }
@@ -183,11 +188,12 @@
       padding: 3px; margin-bottom: 12px;
     }
     .mode-toggle button {
-      flex: 1; padding: 8px; border: none; border-radius: 6px;
-      background: none; font-size: 12px; font-weight: bold; cursor: pointer;
-      color: var(--gray-mid);
+      flex: 1; padding: 10px 8px; border: none; border-radius: 6px;
+      background: none; font-size: 13px; font-weight: bold; cursor: pointer;
+      color: var(--gray-mid); min-height: 44px;
     }
     .mode-toggle button.active { background: var(--green-mid); color: var(--white); }
+    .mode-toggle button:focus { outline: 2px solid var(--green-mid); outline-offset: 1px; }
 
     /* ── Photo Thumbnails ── */
     .photo-grid {
@@ -203,14 +209,15 @@
     }
     .photo-thumb .remove-btn {
       position: absolute; top: 4px; right: 4px;
-      background: rgba(220,53,69,0.85); color: white;
-      border: none; border-radius: 50%; width: 22px; height: 22px;
-      font-size: 12px; cursor: pointer; line-height: 22px; text-align: center;
+      background: rgba(220,53,69,0.9); color: white;
+      border: none; border-radius: 50%; width: 32px; height: 32px;
+      font-size: 14px; cursor: pointer; line-height: 32px; text-align: center;
     }
+    .photo-thumb .remove-btn:focus { outline: 2px solid #fff; outline-offset: 1px; }
     .photo-thumb .uploading {
-      position: absolute; inset: 0; background: rgba(0,0,0,0.5);
+      position: absolute; inset: 0; background: rgba(0,0,0,0.6);
       display: flex; align-items: center; justify-content: center;
-      color: white; font-size: 11px; font-weight: bold;
+      color: white; font-size: 13px; font-weight: bold;
     }
 
     /* ── Sample Info Bar ── */
@@ -258,7 +265,7 @@
   <!-- ============================================================ -->
   <div id="tab-scan" class="tab-panel active">
     <div class="scan-counter">Scanned: <span id="scanCount">0</span></div>
-    <div id="scanStatus" class="status-bar ready">📷 Ready to scan</div>
+    <div id="scanStatus" class="status-bar ready" role="status" aria-live="polite" aria-atomic="true">📷 Ready to scan</div>
 
     <!-- Mode Toggle -->
     <div class="mode-toggle">
@@ -284,9 +291,10 @@
     <div class="card">
       <h3>Or type / paste:</h3>
       <div class="input-group">
+        <label for="manualScanInput" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">CS Sample Number</label>
         <input type="text" id="manualScanInput" placeholder="CS Sample #" autocomplete="off"
-               onkeypress="if(event.key==='Enter') doManualScan();">
-        <button class="go-btn" onclick="doManualScan()">GO</button>
+               onkeypress="if(event.key==='Enter') doManualScan();" aria-label="CS Sample Number">
+        <button class="go-btn" id="manualScanBtn" onclick="doManualScan()" aria-label="Submit sample number">GO</button>
       </div>
     </div>
 
@@ -307,18 +315,18 @@
   <!-- TAB: PHOTOS -->
   <!-- ============================================================ -->
   <div id="tab-photos" class="tab-panel">
-    <div id="photoStatus" class="status-bar ready">📸 Scan or enter sample # to add photos</div>
+    <div id="photoStatus" class="status-bar ready" role="status" aria-live="polite" aria-atomic="true">📸 Scan or enter sample # to add photos</div>
 
     <!-- Sample ID input -->
     <div class="card">
       <h3>📸 Sample Photos</h3>
       <div class="input-group">
         <input type="text" id="photoSampleInput" placeholder="CS Sample # (e.g. 211657-05)" autocomplete="off"
-               onkeypress="if(event.key==='Enter') loadSampleForPhoto();">
-        <button class="go-btn" onclick="loadSampleForPhoto()">GO</button>
+               onkeypress="if(event.key==='Enter') loadSampleForPhoto();" aria-label="CS Sample Number for photos">
+        <button class="go-btn" id="photoGoBtn" onclick="loadSampleForPhoto()" aria-label="Load sample for photos">GO</button>
       </div>
       <div style="text-align:center;margin-top:6px;">
-        <button class="btn btn-secondary" onclick="startPhotoScanner()" style="font-size:12px;padding:8px 14px;">
+        <button class="btn btn-secondary" onclick="startPhotoScanner()" style="font-size:13px;padding:10px 16px;min-height:44px;">
           📷 Scan Barcode Instead
         </button>
       </div>
@@ -343,7 +351,7 @@
         <h3>📎 Photos to Upload (<span id="pendingCount">0</span>)</h3>
         <div class="photo-grid" id="pendingPhotos"></div>
         <div class="btn-row">
-          <button class="btn btn-primary btn-block" onclick="uploadAllPhotos()">
+          <button class="btn btn-primary btn-block" id="uploadAllBtn" onclick="uploadAllPhotos()" aria-label="Upload all pending photos">
             📤 Upload All Photos
           </button>
         </div>
@@ -361,7 +369,7 @@
   <!-- TAB: DROP (Drag & Drop PDF) -->
   <!-- ============================================================ -->
   <div id="tab-drop" class="tab-panel">
-    <div id="dropStatus" class="status-bar ready">📄 Drop a PDF to extract order data</div>
+    <div id="dropStatus" class="status-bar ready" role="status" aria-live="polite" aria-atomic="true">📄 Drop a PDF to extract order data</div>
 
     <div class="drop-zone" id="dropZone"
          ondragover="event.preventDefault(); this.classList.add('dragover');"
@@ -382,7 +390,7 @@
   <!-- TAB: MANUAL ORDER ENTRY -->
   <!-- ============================================================ -->
   <div id="tab-entry" class="tab-panel">
-    <div id="entryStatus" class="status-bar ready">✍️ Enter order details</div>
+    <div id="entryStatus" class="status-bar ready" role="status" aria-live="polite" aria-atomic="true">✍️ Enter order details</div>
 
     <div class="card">
       <h3>📋 New Sample Order</h3>
@@ -443,7 +451,7 @@
         </div>
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary btn-block" onclick="submitManualOrder()">📤 Submit Order</button>
+        <button class="btn btn-primary btn-block" id="entrySubmitBtn" onclick="submitManualOrder()">📤 Submit Order</button>
       </div>
       <div class="btn-row">
         <button class="btn btn-secondary btn-block" onclick="clearEntryForm()">Clear Form</button>
@@ -458,9 +466,10 @@
     <div class="card">
       <h3>🔍 Order Lookup</h3>
       <div class="input-group">
+        <label for="lookupInput" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">CS Sample Number to look up</label>
         <input type="text" id="lookupInput" placeholder="CS Sample # or scan..."
-               onkeypress="if(event.key==='Enter') doLookup();">
-        <button class="go-btn" onclick="doLookup()">Search</button>
+               onkeypress="if(event.key==='Enter') doLookup();" aria-label="CS Sample Number to look up">
+        <button class="go-btn" id="lookupBtn" onclick="doLookup()" aria-label="Search for order">Search</button>
       </div>
     </div>
     <div id="lookupResult"></div>
@@ -491,6 +500,21 @@
   <!-- JAVASCRIPT -->
   <!-- ============================================================ -->
   <script>
+    // ── Security Helpers ──
+    function esc(s) {
+      if (!s) return '';
+      var d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function sanitizeUrl(url) {
+      if (!url) return '';
+      var s = String(url).trim();
+      if (/^https?:\/\//i.test(s)) return s;
+      return '';
+    }
+
     // ── State ──
     var scanCount = 0;
     var scanMode = 'receive';
@@ -604,11 +628,14 @@
 
     function doManualScan() {
       var input = document.getElementById('manualScanInput');
+      var btn = document.getElementById('manualScanBtn');
       var val = input.value.trim();
       if (!val) return;
+      btn.disabled = true;
       processScanResult(val);
       input.value = '';
-      input.focus();
+      // Re-enable after a short delay so it can't be double-fired
+      setTimeout(function() { btn.disabled = false; input.focus(); }, 1500);
     }
 
     function processScanResult(code) {
@@ -689,22 +716,39 @@
       var time = new Date().toLocaleTimeString();
       var div = document.createElement('div');
       div.className = 'hist-item ' + (ok ? 'ok' : 'fail');
-      div.innerHTML = '<span class="hid">' + (ok ? '✅' : '❌') + ' ' + id + '</span>' +
-                      '<span class="hmsg">' + time + '</span>';
+      var idSpan = document.createElement('span');
+      idSpan.className = 'hid';
+      idSpan.textContent = (ok ? '\u2705' : '\u274C') + ' ' + id;
+      var timeSpan = document.createElement('span');
+      timeSpan.className = 'hmsg';
+      timeSpan.textContent = time;
+      div.appendChild(idSpan);
+      div.appendChild(timeSpan);
       list.insertBefore(div, list.firstChild);
     }
 
     function clearScanHistory() {
       scanCount = 0;
       document.getElementById('scanCount').textContent = '0';
-      document.getElementById('scanHistory').innerHTML = '';
+      document.getElementById('scanHistory').textContent = '';
       document.getElementById('scanHistoryCard').style.display = 'none';
       setStatusBar('scanStatus', 'ready', '📷 Ready to scan');
     }
 
     // ── Lookup Result Display ──
     function showLookupResult(data) {
-      var html = '<div class="card"><h3>📋 ' + (data.csSample || '?') + '</h3><div class="form-grid">';
+      var container = document.getElementById('lookupResult');
+      container.textContent = '';
+
+      var card = document.createElement('div');
+      card.className = 'card';
+      var h3 = document.createElement('h3');
+      h3.textContent = '\uD83D\uDCCB ' + (data.csSample || '?');
+      card.appendChild(h3);
+
+      var grid = document.createElement('div');
+      grid.className = 'form-grid';
+
       var fields = [
         ['CS Order', data.csOrder], ['Status', data.status],
         ['Sender', data.sender], ['Receiver', data.receiver],
@@ -716,13 +760,21 @@
       ];
       fields.forEach(function(f) {
         if (f[1]) {
-          html += '<div class="form-field"><label>' + f[0] + '</label>' +
-                  '<div style="padding:6px;background:#f9f9f9;border-radius:4px;font-size:13px;font-weight:bold;">' +
-                  f[1] + '</div></div>';
+          var fieldDiv = document.createElement('div');
+          fieldDiv.className = 'form-field';
+          var label = document.createElement('label');
+          label.textContent = f[0];
+          var valueDiv = document.createElement('div');
+          valueDiv.style.cssText = 'padding:6px;background:#f9f9f9;border-radius:4px;font-size:13px;font-weight:bold;';
+          valueDiv.textContent = f[1];
+          fieldDiv.appendChild(label);
+          fieldDiv.appendChild(valueDiv);
+          grid.appendChild(fieldDiv);
         }
       });
-      html += '</div></div>';
-      document.getElementById('lookupResult').innerHTML = html;
+
+      card.appendChild(grid);
+      container.appendChild(card);
     }
 
     function showParsedQR(data) { showLookupResult(data); }
@@ -730,15 +782,36 @@
     function doLookup() {
       var val = document.getElementById('lookupInput').value.trim();
       if (!val) return;
+      var btn = document.getElementById('lookupBtn');
+      var resultEl = document.getElementById('lookupResult');
+      btn.disabled = true;
+      btn.textContent = '...';
+      resultEl.textContent = '';
+      var searchingDiv = document.createElement('div');
+      searchingDiv.className = 'status-bar working';
+      searchingDiv.textContent = '\u23F3 Searching...';
+      resultEl.appendChild(searchingDiv);
       google.script.run
         .withSuccessHandler(function(r) {
+          btn.disabled = false;
+          btn.textContent = 'Search';
           if (r.success && r.data) showLookupResult(r.data);
-          else document.getElementById('lookupResult').innerHTML =
-            '<div class="status-bar error">' + (r.message || 'Not found') + '</div>';
+          else {
+            resultEl.textContent = '';
+            var errDiv = document.createElement('div');
+            errDiv.className = 'status-bar error';
+            errDiv.textContent = r.message || 'Not found';
+            resultEl.appendChild(errDiv);
+          }
         })
         .withFailureHandler(function(e) {
-          document.getElementById('lookupResult').innerHTML =
-            '<div class="status-bar error">❌ ' + e.message + '</div>';
+          btn.disabled = false;
+          btn.textContent = 'Search';
+          resultEl.textContent = '';
+          var errDiv = document.createElement('div');
+          errDiv.className = 'status-bar error';
+          errDiv.textContent = '❌ Lookup failed — check your connection and try again';
+          resultEl.appendChild(errDiv);
         })
         .webAppProcessQR(val);
     }
@@ -789,6 +862,7 @@
     function loadSampleForPhoto() {
       var sampleId = document.getElementById('photoSampleInput').value.trim();
       if (!sampleId) return;
+      var goBtn = document.getElementById('photoGoBtn');
 
       // Parse QR if pipe-delimited
       if (sampleId.indexOf('|') !== -1) {
@@ -801,11 +875,13 @@
         document.getElementById('photoSampleInput').value = sampleId;
       }
 
+      if (goBtn) goBtn.disabled = true;
       setStatusBar('photoStatus', 'working', '⏳ Loading ' + sampleId + '...');
 
       // Look up sample + existing photos
       google.script.run
         .withSuccessHandler(function(r) {
+          if (goBtn) goBtn.disabled = false;
           if (r.success) {
             currentPhotoSample = r.data;
             currentPhotoSample.csSample = sampleId;
@@ -818,25 +894,40 @@
           }
         })
         .withFailureHandler(function(e) {
-          setStatusBar('photoStatus', 'error', '❌ ' + e.message);
+          if (goBtn) goBtn.disabled = false;
+          setStatusBar('photoStatus', 'error', '❌ Failed to load sample — check your connection and try again');
         })
         .webAppLoadSamplePhotos(sampleId);
     }
 
     function showSamplePhotoInfo(data, existingPhotos) {
       var infoEl = document.getElementById('photoSampleInfo');
-      var html = '<div class="sample-info">' +
-        '<div class="sample-id">📋 ' + (data.csSample || '?') + '</div>' +
-        '<div class="sample-detail">' +
-          (data.sender ? data.sender + ' — ' : '') +
+      infoEl.textContent = '';
+
+      var infoDiv = document.createElement('div');
+      infoDiv.className = 'sample-info';
+
+      var idDiv = document.createElement('div');
+      idDiv.className = 'sample-id';
+      idDiv.textContent = '\uD83D\uDCCB ' + (data.csSample || '?');
+      infoDiv.appendChild(idDiv);
+
+      var detailDiv = document.createElement('div');
+      detailDiv.className = 'sample-detail';
+      var detailText = (data.sender ? data.sender + ' \u2014 ' : '') +
           (data.description || '') +
-          (data.warehouse ? ' (' + data.warehouse + ')' : '') +
-        '</div>';
+          (data.warehouse ? ' (' + data.warehouse + ')' : '');
+      detailDiv.textContent = detailText;
+      infoDiv.appendChild(detailDiv);
+
       if (data.photoLinks) {
-        html += '<div class="existing-photos">📎 Photos already linked</div>';
+        var photoDiv = document.createElement('div');
+        photoDiv.className = 'existing-photos';
+        photoDiv.textContent = '\uD83D\uDCCE Photos already linked';
+        infoDiv.appendChild(photoDiv);
       }
-      html += '</div>';
-      infoEl.innerHTML = html;
+
+      infoEl.appendChild(infoDiv);
       infoEl.style.display = 'block';
 
       // Show capture area
@@ -845,12 +936,24 @@
       // Show existing photos
       if (existingPhotos && existingPhotos.length > 0) {
         var grid = document.getElementById('existingPhotos');
-        grid.innerHTML = existingPhotos.map(function(p) {
-          return '<div class="photo-thumb">' +
-            '<a href="' + p.url + '" target="_blank">' +
-            '<img src="' + p.thumbnail + '" alt="' + p.name + '">' +
-            '</a></div>';
-        }).join('');
+        grid.textContent = '';
+        existingPhotos.forEach(function(p) {
+          var safeUrl = sanitizeUrl(p.url);
+          var safeThumb = sanitizeUrl(p.thumbnail);
+          if (!safeUrl || !safeThumb) return;
+          var thumbDiv = document.createElement('div');
+          thumbDiv.className = 'photo-thumb';
+          var link = document.createElement('a');
+          link.href = safeUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          var img = document.createElement('img');
+          img.src = safeThumb;
+          img.alt = String(p.name || 'photo').replace(/[<>"'&]/g, '');
+          link.appendChild(img);
+          thumbDiv.appendChild(link);
+          grid.appendChild(thumbDiv);
+        });
         document.getElementById('existingPhotosCard').style.display = 'block';
       } else {
         document.getElementById('existingPhotosCard').style.display = 'none';
@@ -858,7 +961,7 @@
 
       // Clear pending
       pendingPhotos = [];
-      document.getElementById('pendingPhotos').innerHTML = '';
+      document.getElementById('pendingPhotos').textContent = '';
       document.getElementById('pendingPhotosCard').style.display = 'none';
     }
 
@@ -888,13 +991,28 @@
 
     function renderPendingPhotos() {
       var grid = document.getElementById('pendingPhotos');
-      grid.innerHTML = pendingPhotos.map(function(p, idx) {
-        return '<div class="photo-thumb" id="pending-' + idx + '">' +
-          '<img src="' + p.dataUrl + '">' +
-          '<button class="remove-btn" onclick="removePendingPhoto(' + idx + ')">✕</button>' +
-          (p.uploading ? '<div class="uploading">⏳</div>' : '') +
-          '</div>';
-      }).join('');
+      grid.textContent = '';
+      pendingPhotos.forEach(function(p, idx) {
+        var thumbDiv = document.createElement('div');
+        thumbDiv.className = 'photo-thumb';
+        thumbDiv.id = 'pending-' + idx;
+        var img = document.createElement('img');
+        img.src = p.dataUrl;
+        thumbDiv.appendChild(img);
+        var btn = document.createElement('button');
+        btn.className = 'remove-btn';
+        btn.textContent = '\u2715';
+        btn.setAttribute('data-idx', idx);
+        btn.addEventListener('click', function() { removePendingPhoto(parseInt(this.getAttribute('data-idx'), 10)); });
+        thumbDiv.appendChild(btn);
+        if (p.uploading) {
+          var overlay = document.createElement('div');
+          overlay.className = 'uploading';
+          overlay.textContent = '\u23F3';
+          thumbDiv.appendChild(overlay);
+        }
+        grid.appendChild(thumbDiv);
+      });
       document.getElementById('pendingCount').textContent = pendingPhotos.length;
       document.getElementById('pendingPhotosCard').style.display = pendingPhotos.length > 0 ? 'block' : 'none';
     }
@@ -914,6 +1032,8 @@
         return;
       }
 
+      var uploadBtn = document.getElementById('uploadAllBtn');
+      if (uploadBtn) { uploadBtn.disabled = true; uploadBtn.textContent = '⏳ Uploading...'; }
       setStatusBar('photoStatus', 'working', '⏳ Uploading ' + pendingPhotos.length + ' photo(s)...');
       var sampleId = currentPhotoSample.csSample;
       var uploaded = 0;
@@ -936,6 +1056,7 @@
 
             if (uploaded === total) {
               // All done
+              if (uploadBtn) { uploadBtn.disabled = false; uploadBtn.textContent = '📤 Upload All Photos'; }
               pendingPhotos = pendingPhotos.filter(function(p) { return !p.uploaded; });
               renderPendingPhotos();
               if (pendingPhotos.length === 0) {
@@ -952,10 +1073,11 @@
           .withFailureHandler(function(e) {
             uploaded++;
             photo.uploading = false;
-            photo.error = e.message;
+            photo.error = 'Upload failed';
             renderPendingPhotos();
             if (uploaded === total) {
-              setStatusBar('photoStatus', 'error', '⚠️ Some uploads failed');
+              if (uploadBtn) { uploadBtn.disabled = false; uploadBtn.textContent = '📤 Upload All Photos'; }
+              setStatusBar('photoStatus', 'error', '⚠️ Some uploads failed — tap Upload to retry');
             }
           })
           .webAppUploadPhoto(sampleId, photo.base64, photo.fileName, photo.mimeType);
@@ -996,8 +1118,8 @@
               setStatusBar('dropStatus', 'error', r.message || 'Could not parse PDF');
             }
           })
-          .withFailureHandler(function(e) {
-            setStatusBar('dropStatus', 'error', '❌ ' + e.message);
+          .withFailureHandler(function(err) {
+            setStatusBar('dropStatus', 'error', '❌ PDF processing failed — check your connection and try again');
           })
           .webAppProcessPDF(base64, file.name);
       };
@@ -1007,30 +1129,70 @@
     function showExtractedData(samples, rawText) {
       var previewEl = document.getElementById('extractPreview');
       var formEl = document.getElementById('extractedOrderForm');
-      previewEl.innerHTML = '<div class="extract-preview"><h4>📄 Extracted Text</h4>' +
-        '<div class="raw">' + (rawText || 'No text').replace(/</g, '&lt;') + '</div></div>';
+
+      // Build preview with DOM APIs
+      previewEl.textContent = '';
+      var previewDiv = document.createElement('div');
+      previewDiv.className = 'extract-preview';
+      var h4 = document.createElement('h4');
+      h4.textContent = '\uD83D\uDCC4 Extracted Text';
+      previewDiv.appendChild(h4);
+      var rawDiv = document.createElement('div');
+      rawDiv.className = 'raw';
+      rawDiv.textContent = rawText || 'No text';
+      previewDiv.appendChild(rawDiv);
+      previewEl.appendChild(previewDiv);
       previewEl.style.display = 'block';
 
       if (samples && samples.length > 0) {
         var s = samples[0];
-        var formHtml = '<div class="card"><h3>✏️ Review & Submit</h3><div class="form-grid">';
+        formEl.textContent = '';
+        var card = document.createElement('div');
+        card.className = 'card';
+        var cardH3 = document.createElement('h3');
+        cardH3.textContent = '\u270F\uFE0F Review & Submit';
+        card.appendChild(cardH3);
+        var grid = document.createElement('div');
+        grid.className = 'form-grid';
+
         [['Sender','dropSender',s.sender],['Warehouse','dropWarehouse',s.warehouse],
          ['Order #','dropOrderNum',s.sampleOrderNum],['Container','dropContainer',s.container],
          ['Cargo','dropCargo',s.cargo],['Mark','dropMark',s.mark],
          ['Description','dropDesc',s.description],['Bag Count','dropBags',s.bagCount],
          ['Sample Weight','dropWeight',s.sampleWeight],['Reference','dropRef',s.reference]
         ].forEach(function(f) {
-          formHtml += '<div class="form-field"><label>' + f[0] + '</label>' +
-            '<input type="text" id="' + f[1] + '" value="' + (f[2]||'').replace(/"/g,'&quot;') + '"></div>';
+          var fieldDiv = document.createElement('div');
+          fieldDiv.className = 'form-field';
+          var label = document.createElement('label');
+          label.textContent = f[0];
+          var input = document.createElement('input');
+          input.type = 'text';
+          input.id = f[1];
+          input.value = f[2] || '';
+          fieldDiv.appendChild(label);
+          fieldDiv.appendChild(input);
+          grid.appendChild(fieldDiv);
         });
-        formHtml += '</div><div class="btn-row">' +
-          '<button class="btn btn-primary btn-block" onclick="submitDroppedOrder()">📤 Submit Order</button></div></div>';
-        formEl.innerHTML = formHtml;
+
+        card.appendChild(grid);
+        var btnRow = document.createElement('div');
+        btnRow.className = 'btn-row';
+        var submitBtn = document.createElement('button');
+        submitBtn.className = 'btn btn-primary btn-block';
+        submitBtn.textContent = '\uD83D\uDCE4 Submit Order';
+        submitBtn.addEventListener('click', submitDroppedOrder);
+        btnRow.appendChild(submitBtn);
+        card.appendChild(btnRow);
+        formEl.appendChild(card);
         formEl.style.display = 'block';
       }
     }
 
     function submitDroppedOrder() {
+      // The submit button is created dynamically; find it via the form el
+      var formEl = document.getElementById('extractedOrderForm');
+      var dropBtn = formEl ? formEl.querySelector('.btn-primary') : null;
+      if (dropBtn) { dropBtn.disabled = true; dropBtn.textContent = '⏳ Submitting...'; }
       setStatusBar('dropStatus', 'working', '⏳ Submitting...');
       var orderData = {
         sender: document.getElementById('dropSender').value.trim(),
@@ -1049,16 +1211,27 @@
         .withSuccessHandler(function(r) {
           if (r.success) {
             setStatusBar('dropStatus', 'success', r.message);
-            document.getElementById('extractedOrderForm').innerHTML =
-              '<div class="status-bar success">✅ Order submitted!</div>';
-          } else setStatusBar('dropStatus', 'error', r.message);
+            formEl.textContent = '';
+            var successDiv = document.createElement('div');
+            successDiv.className = 'status-bar success';
+            successDiv.textContent = '✅ Order submitted!';
+            formEl.appendChild(successDiv);
+          } else {
+            if (dropBtn) { dropBtn.disabled = false; dropBtn.textContent = '📤 Submit Order'; }
+            setStatusBar('dropStatus', 'error', r.message);
+          }
         })
-        .withFailureHandler(function(e) { setStatusBar('dropStatus', 'error', '❌ ' + e.message); })
+        .withFailureHandler(function(e) {
+          if (dropBtn) { dropBtn.disabled = false; dropBtn.textContent = '📤 Submit Order'; }
+          setStatusBar('dropStatus', 'error', '❌ Submission failed — check your connection and try again');
+        })
         .webAppSubmitOrder(orderData);
     }
 
     // ── Manual Order Entry ──
     function submitManualOrder() {
+      var entryBtn = document.getElementById('entrySubmitBtn');
+      if (entryBtn) { entryBtn.disabled = true; entryBtn.textContent = '⏳ Submitting...'; }
       setStatusBar('entryStatus', 'working', '⏳ Submitting...');
       var senderVal = document.getElementById('entrySender').value;
       if (senderVal === '_other_') senderVal = prompt('Enter sender/client name:') || '';
@@ -1081,15 +1254,20 @@
       };
 
       if (!orderData.sender && !orderData.sampleOrderNum && !orderData.container) {
+        if (entryBtn) { entryBtn.disabled = false; entryBtn.textContent = '📤 Submit Order'; }
         setStatusBar('entryStatus', 'error', '⚠️ Need at least sender, order #, or container #'); return;
       }
 
       google.script.run
         .withSuccessHandler(function(r) {
+          if (entryBtn) { entryBtn.disabled = false; entryBtn.textContent = '📤 Submit Order'; }
           if (r.success) setStatusBar('entryStatus', 'success', r.message);
           else setStatusBar('entryStatus', 'error', r.message);
         })
-        .withFailureHandler(function(e) { setStatusBar('entryStatus', 'error', '❌ ' + e.message); })
+        .withFailureHandler(function(e) {
+          if (entryBtn) { entryBtn.disabled = false; entryBtn.textContent = '📤 Submit Order'; }
+          setStatusBar('entryStatus', 'error', '❌ Submission failed — check your connection and try again');
+        })
         .webAppSubmitOrder(orderData);
     }
 
@@ -1153,7 +1331,10 @@
           }
           whEl.appendChild(Object.assign(document.createElement('option'), {value:'_other_',textContent:'— Other —'}));
         })
-        .withFailureHandler(function(e) { console.log('Form data error:', e); })
+        .withFailureHandler(function(e) {
+          setStatusBar('entryStatus', 'error', '⚠️ Could not load form data — tap to retry or type sender/receiver manually');
+          console.warn('Form data load error:', e && e.message ? e.message : e);
+        })
         .webAppGetFormData();
     }
 

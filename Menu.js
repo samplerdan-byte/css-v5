@@ -49,24 +49,58 @@ function onOpen() {
 function createTimeTriggers() {
   try {
     var triggers = ScriptApp.getProjectTriggers();
-    if (triggers) {
+    var toDelete = [];
+
+    // Collect existing triggers to delete
+    if (triggers && Array.isArray(triggers)) {
       triggers.forEach(function(trigger) {
-        if (trigger && (trigger.getHandlerFunction() === 'processPDFsFromGmail' ||
-            trigger.getHandlerFunction() === 'scheduledBackup' ||
-            trigger.getHandlerFunction() === 'processPendingMoves')) {
-          ScriptApp.deleteTrigger(trigger);
+        if (!trigger) return;
+        try {
+          var handlerFunc = trigger.getHandlerFunction();
+          if (handlerFunc === 'processPDFsFromGmail' ||
+              handlerFunc === 'scheduledBackup' ||
+              handlerFunc === 'processPendingMoves') {
+            toDelete.push(trigger);
+          }
+        } catch (e) {
+          Logger.log('Could not inspect trigger: ' + e.message);
         }
       });
     }
 
-    ScriptApp.newTrigger('processPDFsFromGmail')
-      .timeBased().everyMinutes(15).create();
+    // Delete collected triggers
+    for (var i = 0; i < toDelete.length; i++) {
+      try {
+        ScriptApp.deleteTrigger(toDelete[i]);
+      } catch (e) {
+        Logger.log('Could not delete trigger: ' + e.message);
+      }
+    }
 
-    ScriptApp.newTrigger('scheduledBackup')
-      .timeBased().atHour(23).everyDays(1).create();
+    // Create new triggers with error handling
+    try {
+      ScriptApp.newTrigger('processPDFsFromGmail')
+        .timeBased().everyMinutes(15).create();
+    } catch (e) {
+      Logger.log('Failed to create processPDFsFromGmail trigger: ' + e.message);
+      throw e;
+    }
 
-    ScriptApp.newTrigger('processPendingMoves')
-      .timeBased().everyHours(1).create();
+    try {
+      ScriptApp.newTrigger('scheduledBackup')
+        .timeBased().atHour(23).everyDays(1).create();
+    } catch (e) {
+      Logger.log('Failed to create scheduledBackup trigger: ' + e.message);
+      throw e;
+    }
+
+    try {
+      ScriptApp.newTrigger('processPendingMoves')
+        .timeBased().everyHours(1).create();
+    } catch (e) {
+      Logger.log('Failed to create processPendingMoves trigger: ' + e.message);
+      throw e;
+    }
 
     Logger.log('Time triggers created');
     SpreadsheetApp.getUi().alert('Triggers Created!\n\n• Email processing: every 15 min\n• Backup: daily at 11 PM\n• Move shipped orders: hourly');
@@ -79,13 +113,24 @@ function createTimeTriggers() {
 function deleteAllTriggers() {
   try {
     var triggers = ScriptApp.getProjectTriggers();
-    if (triggers) {
+    var deleted = 0;
+    var failed = 0;
+
+    if (triggers && Array.isArray(triggers)) {
       triggers.forEach(function(trigger) {
-        if (trigger) ScriptApp.deleteTrigger(trigger);
+        if (!trigger) return;
+        try {
+          ScriptApp.deleteTrigger(trigger);
+          deleted++;
+        } catch (e) {
+          Logger.log('Could not delete trigger: ' + e.message);
+          failed++;
+        }
       });
     }
-    Logger.log('All triggers deleted');
-    SpreadsheetApp.getUi().alert('All triggers deleted.');
+
+    Logger.log('All triggers deletion: deleted=' + deleted + ', failed=' + failed);
+    SpreadsheetApp.getUi().alert('Trigger deletion complete.\n\nDeleted: ' + deleted + '\nFailed: ' + failed);
   } catch (e) {
     Logger.log('deleteAllTriggers error: ' + e.message);
     SpreadsheetApp.getUi().alert('Error deleting triggers: ' + e.message);
@@ -127,7 +172,10 @@ function _getUserRole() {
   try {
     var email = '';
     try {
-      email = Session.getActiveUser().getEmail().toLowerCase().trim();
+      var activeUser = Session.getActiveUser();
+      if (activeUser) {
+        email = String(activeUser.getEmail()).toLowerCase().trim();
+      }
     } catch (e) {
       Logger.log('getActiveUser failed: ' + e.message);
     }
@@ -135,25 +183,31 @@ function _getUserRole() {
     // getActiveUser() returns empty in simple triggers — fall back to effective user
     if (!email) {
       try {
-        email = Session.getEffectiveUser().getEmail().toLowerCase().trim();
+        var effectiveUser = Session.getEffectiveUser();
+        if (effectiveUser) {
+          email = String(effectiveUser.getEmail()).toLowerCase().trim();
+        }
       } catch (e) {
         Logger.log('getEffectiveUser failed: ' + e.message);
       }
     }
 
-    // If still empty, we're likely the owner running a simple trigger — default to editor
-    if (!email) {
-      Logger.log('Could not determine user email — defaulting to editor');
-      return 'editor';
+    // If still empty, fail-closed to 'none' instead of defaulting to editor
+    if (!email || email.length === 0) {
+      Logger.log('Could not determine user email — denying access');
+      return 'none';
     }
 
     Logger.log('User detected: ' + email);
     var roles = _loadUserRoles();
-    if (!roles || typeof roles !== 'object') return 'none';
+    if (!roles || typeof roles !== 'object') {
+      Logger.log('No user roles config found');
+      return 'none';
+    }
     return roles[email] || 'none';
   } catch (e) {
     Logger.log('Could not get user email: ' + e.message);
-    return 'editor'; // safe default — owner is the only one who'd hit this
+    return 'none'; // fail-closed
   }
 }
 
@@ -658,8 +712,16 @@ function _loadAccessConfig() {
     var props = PropertiesService.getScriptProperties();
     if (!props) return {};
     var raw = props.getProperty(ACCESS_CONFIG_KEY);
-    if (!raw) return {};
-    var config = JSON.parse(raw);
+    if (!raw || typeof raw !== 'string') return {};
+
+    var config = {};
+    try {
+      config = JSON.parse(raw);
+    } catch (parseErr) {
+      Logger.log('Error parsing access config JSON: ' + parseErr.message);
+      return {};
+    }
+
     return (config && typeof config === 'object') ? config : {};
   } catch (e) {
     Logger.log('Error loading access config: ' + e.message);
@@ -713,10 +775,16 @@ function saveAccessConfig(jsonStr) {
 function _loadUserRoles() {
   try {
     var props = PropertiesService.getScriptProperties();
-    if (!props) return USER_ROLES;
+    if (!props) return USER_ROLES || {};
     var raw = props.getProperty(USER_ROLES_KEY);
-    if (raw) {
-      var config = JSON.parse(raw);
+    if (raw && typeof raw === 'string') {
+      var config = {};
+      try {
+        config = JSON.parse(raw);
+      } catch (parseErr) {
+        Logger.log('Error parsing user roles JSON: ' + parseErr.message);
+        return USER_ROLES || {};
+      }
       if (config && typeof config === 'object') return config;
     }
   } catch (e) {

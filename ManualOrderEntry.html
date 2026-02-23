@@ -4,63 +4,72 @@
   <base target="_top">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; padding: 12px; background: #f9f9f9; font-size: 13px; }
+    body { font-family: Arial, sans-serif; padding: 12px; background: #f9f9f9; font-size: 14px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
     h2 { color: #2E5339; margin-bottom: 12px; font-size: 16px; text-align: center; }
     .form-section {
       background: #fff; border-radius: 8px; padding: 12px;
       margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     }
     .form-section h3 {
-      font-size: 12px; color: #2E5339; margin-bottom: 8px;
+      font-size: 13px; color: #2E5339; margin-bottom: 8px;
       padding-bottom: 4px; border-bottom: 1px solid #e0e0e0;
     }
-    label { display: block; font-size: 11px; color: #555; margin-bottom: 3px; font-weight: bold; }
+    label { display: block; font-size: 12px; color: #444; margin-bottom: 3px; font-weight: bold; }
     input, select, textarea {
-      width: 100%; padding: 8px; border: 1px solid #ccc;
-      border-radius: 5px; font-size: 13px; margin-bottom: 8px;
+      width: 100%; padding: 10px; border: 1px solid #ccc;
+      border-radius: 5px; font-size: 14px; margin-bottom: 8px; min-height: 44px;
     }
-    input:focus, select:focus { outline: none; border-color: #2E5339; box-shadow: 0 0 0 2px rgba(46,83,57,0.2); }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #2E5339; box-shadow: 0 0 0 3px rgba(46,83,57,0.25); }
     .row { display: flex; gap: 8px; }
     .row > div { flex: 1; }
     .submit-btn {
-      flex: 1; padding: 12px; background: #2E5339; color: #fff;
+      flex: 1; padding: 14px; background: #2E5339; color: #fff;
       border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer;
+      min-height: 48px;
     }
     .submit-btn:hover { background: #3a6249; }
-    .submit-btn:disabled { background: #ccc; }
+    .submit-btn:disabled { background: #999; cursor: not-allowed; }
+    .submit-btn:focus { outline: 3px solid #ffbf00; outline-offset: 2px; }
     .btn-row { display: flex; gap: 8px; }
     .clear-btn {
-      padding: 12px 16px; background: #f0f0f0; color: #666;
-      border: 1px solid #ccc; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap;
+      padding: 14px 16px; background: #f0f0f0; color: #555;
+      border: 1px solid #bbb; border-radius: 8px; font-size: 14px; cursor: pointer; white-space: nowrap;
+      min-height: 48px;
     }
     .clear-btn:hover { background: #e0e0e0; color: #333; }
+    .clear-btn:focus { outline: 3px solid #2E5339; outline-offset: 2px; }
     #statusMsg {
-      padding: 10px; border-radius: 6px; text-align: center;
+      padding: 12px; border-radius: 6px; text-align: center;
       font-weight: bold; margin-top: 10px; display: none; transition: opacity 0.5s;
+      font-size: 14px;
     }
-    .msg-success { background: #d4edda; color: #155724; display: block !important; }
-    .msg-error { background: #f8d7da; color: #721c24; display: block !important; }
-    #submitCount { text-align: center; font-size: 11px; color: #888; margin-top: 6px; }
+    .msg-success { background: #d4edda; color: #155724; border-left: 4px solid #28a745; }
+    .msg-error { background: #f8d7da; color: #721c24; border-left: 4px solid #dc3545; }
+    #submitCount { text-align: center; font-size: 13px; color: #666; margin-top: 6px; }
     #submitCount span { font-weight: bold; color: #2E5339; }
     .contact-picker { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
-    .contact-picker select { flex: 1; margin-bottom: 0; }
+    .contact-picker input[type="text"] { flex: 1; margin-bottom: 0; }
     .new-btn {
-      padding: 6px 10px; background: #2E5339; color: #fff; border: none;
-      border-radius: 5px; font-size: 11px; font-weight: bold; cursor: pointer; white-space: nowrap;
+      padding: 10px 14px; background: #2E5339; color: #fff; border: none;
+      border-radius: 5px; font-size: 13px; font-weight: bold; cursor: pointer; white-space: nowrap;
+      min-height: 44px;
     }
     .new-btn:hover { background: #3a6249; }
+    .new-btn:focus { outline: 3px solid #ffbf00; outline-offset: 2px; }
     .new-btn.active { background: #e67e22; }
     .contact-fields { display: none; }
     .contact-fields.show { display: block; }
-    .save-check { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 11px; color: #555; }
-    .save-check input { width: auto; margin: 0; }
+    .save-check { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; color: #444; }
+    .save-check input[type="checkbox"] { width: 18px; height: 18px; margin: 0; min-height: 0; cursor: pointer; }
     .contact-preview {
-      font-size: 11px; color: #2E5339; padding: 6px 8px; background: #e8f5e9;
-      border-radius: 4px; margin-bottom: 8px; display: none; line-height: 1.4;
+      font-size: 13px; color: #2E5339; padding: 8px 10px; background: #e8f5e9;
+      border-radius: 4px; margin-bottom: 8px; display: none; line-height: 1.5;
+      border-left: 3px solid #2E5339;
     }
     .contact-preview.show { display: block; }
     .hist-item {
-      padding: 3px 0; border-bottom: 1px solid #f0f0f0; color: #2E5339; font-size: 11px;
+      padding: 6px 0; border-bottom: 1px solid #f0f0f0; color: #2E5339; font-size: 13px;
     }
   </style>
 </head>
@@ -188,8 +197,8 @@
     <button class="submit-btn" id="submitBtn" onclick="submitSample()">Add Sample</button>
     <button class="clear-btn" onclick="clearForm()">Clear All</button>
   </div>
-  <div id="submitCount"></div>
-  <div id="statusMsg"></div>
+  <div id="submitCount" aria-live="polite"></div>
+  <div id="statusMsg" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <div id="historySection" class="form-section" style="display:none;margin-top:10px;">
     <h3>✅ Added This Session</h3>
@@ -248,7 +257,7 @@ function restoreState() {
     if (s.sample) SAMPLE_IDS.forEach(function(id) { if (s.sample[id] !== undefined) document.getElementById(id).value = s.sample[id]; });
     submitTotal = s.submitTotal || 0;
     addedSamples = s.addedSamples || [];
-    if (submitTotal > 0) document.getElementById('submitCount').innerHTML = 'Samples added: <span>' + submitTotal + '</span>';
+    if (submitTotal > 0) updateSubmitCount(submitTotal);
     renderHistory();
   } catch(e) {}
 }
@@ -301,7 +310,11 @@ function onContactSelect(dir) {
   if (c.attention) lines.push('Attn: ' + c.attention);
   if (c.address) lines.push(c.address);
   var cl = [c.city, c.state].filter(Boolean).join(', '); if (c.zip) cl += ' ' + c.zip; if (cl) lines.push(cl);
-  preview.innerHTML = lines.join('<br>');
+  preview.textContent = '';
+  lines.forEach(function(line, idx) {
+    if (idx > 0) preview.appendChild(document.createElement('br'));
+    preview.appendChild(document.createTextNode(line));
+  });
   preview.className = 'contact-preview show';
   document.getElementById(dir + 'FieldsWrap').className = 'contact-fields';
   newMode[dir] = false;
@@ -393,16 +406,22 @@ function submitSample() {
         submitTotal++;
         var label = sample.cargo || sample.container || sample.marks || 'Sample ' + submitTotal;
         addedSamples.push(label);
-        document.getElementById('submitCount').innerHTML = 'Samples added: <span>' + submitTotal + '</span>';
+        updateSubmitCount(submitTotal);
         showStatus('msg-success', '✅ #' + submitTotal + ': ' + label);
         renderHistory();
         saveState();
         if (sender.isNew && sender.save && sender.company) {
-          google.script.run.saveNewContact('Shipper', sender);
+          google.script.run
+            .withSuccessHandler(function() {})
+            .withFailureHandler(function(e) { console.warn('Save shipper failed:', e && e.message ? e.message : e); })
+            .saveNewContact('Shipper', sender);
           CONTACTS.shippers.push(sender); refreshDD('shipFromSelect', CONTACTS.shippers, false);
         }
         if (receiver.isNew && receiver.save && receiver.company) {
-          google.script.run.saveNewContact('Receiver', receiver);
+          google.script.run
+            .withSuccessHandler(function() {})
+            .withFailureHandler(function(e) { console.warn('Save receiver failed:', e && e.message ? e.message : e); })
+            .saveNewContact('Receiver', receiver);
           CONTACTS.receivers.push(receiver); refreshDD('shipToSelect', CONTACTS.receivers, true);
         }
       } else {
@@ -411,7 +430,7 @@ function submitSample() {
     })
     .withFailureHandler(function(err) {
       btn.disabled = false; btn.textContent = 'Add Sample';
-      showStatus('msg-error', '❌ Error: ' + err.message);
+      showStatus('msg-error', '❌ Failed to add sample. Please try again.');
     })
     .processManualOrderEntry(orderData);
 }
@@ -422,17 +441,19 @@ function renderHistory() {
   var list = document.getElementById('historyList');
   if (addedSamples.length === 0) { sec.style.display = 'none'; return; }
   sec.style.display = 'block';
-  var html = '';
+  list.textContent = '';
   for (var i = addedSamples.length - 1; i >= 0; i--) {
-    html += '<div class="hist-item">#' + (i + 1) + ' — ' + addedSamples[i] + '</div>';
+    var div = document.createElement('div');
+    div.className = 'hist-item';
+    div.textContent = '#' + (i + 1) + ' \u2014 ' + addedSamples[i];
+    list.appendChild(div);
   }
-  list.innerHTML = html;
 }
 
 function refreshDD(selId, list, showCity) {
   var listId = selId === 'shipFromSelect' ? 'shipFromList' : 'shipToList';
   var dl = document.getElementById(listId);
-  dl.innerHTML = '';
+  dl.textContent = '';
   list.forEach(function(c) {
     var o = document.createElement('option');
     o.value = c.company;
@@ -440,13 +461,28 @@ function refreshDD(selId, list, showCity) {
   });
 }
 
+function updateSubmitCount(count) {
+  var el = document.getElementById('submitCount');
+  el.textContent = '';
+  if (count > 0) {
+    el.appendChild(document.createTextNode('Samples added: '));
+    var span = document.createElement('span');
+    span.textContent = count;
+    el.appendChild(span);
+  }
+}
+
 function showStatus(cls, msg) {
-  var el = document.getElementById('statusMsg'); el.style.opacity = '1'; el.className = cls; el.textContent = msg;
+  var el = document.getElementById('statusMsg');
+  el.style.opacity = '1';
+  el.style.display = 'block';
+  el.className = cls;
+  el.textContent = msg;
   if (fadeTimer) clearTimeout(fadeTimer);
   if (cls === 'msg-success') {
     fadeTimer = setTimeout(function() {
       el.style.opacity = '0';
-      setTimeout(function() { el.className = ''; el.style.display = 'none'; el.style.opacity = '1'; }, 600);
+      setTimeout(function() { el.style.display = 'none'; el.className = ''; el.style.opacity = '1'; }, 600);
     }, 4000);
   }
 }
@@ -473,7 +509,7 @@ function clearForm() {
   document.getElementById('toNewBtn').className = 'new-btn'; document.getElementById('toNewBtn').textContent = '+ New';
   for (var k in FIELD_IDS.to) document.getElementById(FIELD_IDS.to[k]).value = '';
   SAMPLE_IDS.forEach(function(id) { document.getElementById(id).value = ''; });
-  document.getElementById('submitCount').innerHTML = '';
+  document.getElementById('submitCount').textContent = '';
   document.getElementById('historySection').style.display = 'none';
   clearStatus();
 }

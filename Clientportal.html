@@ -21,7 +21,8 @@
       --shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: var(--gray-bg); min-height: 100vh; color: var(--gray-dark); }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: var(--gray-bg); min-height: 100vh; color: var(--gray-dark); font-size: 14px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
     /* ── Header ── */
     .portal-header {
@@ -29,7 +30,7 @@
       color: var(--white); padding: 24px 20px 20px; text-align: center;
     }
     .portal-header h1 { font-size: 18px; letter-spacing: 2px; margin-bottom: 4px; }
-    .portal-header .tagline { font-size: 10px; color: var(--green-accent); font-style: italic; letter-spacing: 1px; }
+    .portal-header .tagline { font-size: 12px; color: var(--green-accent); font-style: italic; letter-spacing: 1px; }
     .portal-header .welcome {
       margin-top: 14px; font-size: 14px; font-weight: 600;
       background: rgba(255,255,255,0.12); display: inline-block;
@@ -46,7 +47,7 @@
       text-align: center; box-shadow: var(--shadow);
     }
     .stat-card .num { font-size: 28px; font-weight: 800; color: var(--green-mid); line-height: 1; }
-    .stat-card .lbl { font-size: 10px; color: var(--gray-mid); text-transform: uppercase; margin-top: 4px; letter-spacing: 0.5px; }
+    .stat-card .lbl { font-size: 12px; color: var(--gray-mid); text-transform: uppercase; margin-top: 4px; letter-spacing: 0.5px; }
 
     /* ── Search / Filter ── */
     .filter-bar {
@@ -58,12 +59,12 @@
       flex: 1; min-width: 150px; padding: 10px 14px; font-size: 14px;
       border: 2px solid var(--gray-light); border-radius: 8px;
     }
-    .filter-bar input:focus { border-color: var(--green-mid); outline: none; }
+    .filter-bar input:focus { border-color: var(--green-mid); outline: 3px solid rgba(46,83,57,0.3); outline-offset: 0; }
     .filter-bar select {
-      padding: 10px; font-size: 13px; border: 2px solid var(--gray-light);
-      border-radius: 8px; background: var(--white);
+      padding: 10px; font-size: 14px; border: 2px solid var(--gray-light);
+      border-radius: 8px; background: var(--white); min-height: 44px;
     }
-    .filter-bar select:focus { border-color: var(--green-mid); outline: none; }
+    .filter-bar select:focus { border-color: var(--green-mid); outline: 3px solid rgba(46,83,57,0.3); outline-offset: 0; }
 
     /* ── Order Cards ── */
     .order-card {
@@ -74,17 +75,19 @@
       cursor: pointer;
     }
     .order-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .order-card:focus { outline: 3px solid var(--green-mid); outline-offset: 2px; }
+    .order-card:focus-visible { outline: 3px solid var(--green-mid); outline-offset: 2px; }
     .order-card.status-received { border-left-color: var(--yellow); }
     .order-card.status-scanned { border-left-color: var(--blue); }
     .order-card.status-shipped, .order-card.status-completed { border-left-color: var(--green-mid); }
 
     .order-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
     .order-id { font-size: 15px; font-weight: 700; color: var(--green-dark); }
-    .order-ref { font-size: 11px; color: var(--gray-mid); margin-top: 2px; }
+    .order-ref { font-size: 12px; color: var(--gray-mid); margin-top: 2px; }
 
     .status-badge {
-      display: inline-block; padding: 3px 10px; border-radius: 12px;
-      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      display: inline-block; padding: 5px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
       white-space: nowrap;
     }
     .badge-received { background: #fbbf24; color: #78350f; }
@@ -93,16 +96,18 @@
     .badge-completed { background: #d1fae5; color: #065f46; }
 
     .order-details { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
-    .order-field { font-size: 12px; }
+    .order-field { font-size: 13px; }
     .order-field .fl { color: var(--gray-mid); }
     .order-field .fv { font-weight: 600; }
 
     .tracking-link {
-      display: inline-block; margin-top: 8px; padding: 5px 12px;
+      display: inline-block; margin-top: 8px; padding: 8px 14px;
       background: var(--green-bg); color: var(--green-mid); border-radius: 6px;
-      font-size: 11px; font-weight: 600; text-decoration: none;
+      font-size: 13px; font-weight: 600; text-decoration: none; min-height: 44px;
+      display: inline-flex; align-items: center;
     }
     .tracking-link:hover { background: #c8e6c9; }
+    .tracking-link:focus { outline: 3px solid var(--green-mid); outline-offset: 2px; }
 
     /* ── Expanded Detail ── */
     .order-expanded {
@@ -137,9 +142,10 @@
 
     /* ── Footer ── */
     .portal-footer {
-      text-align: center; padding: 24px; color: var(--gray-mid); font-size: 11px;
+      text-align: center; padding: 24px; color: var(--gray-mid); font-size: 13px;
     }
     .portal-footer a { color: var(--green-mid); text-decoration: none; }
+    .portal-footer a:focus { outline: 2px solid var(--green-mid); outline-offset: 2px; }
 
     /* ── Responsive ── */
     @media (max-width: 600px) {
@@ -209,8 +215,10 @@
 
       <!-- Search & Filter -->
       <div class="filter-bar">
-        <input type="text" id="searchInput" placeholder="Search orders..." oninput="filterOrders();">
-        <select id="statusFilter" onchange="filterOrders();">
+        <label for="searchInput" class="sr-only">Search orders</label>
+        <input type="text" id="searchInput" placeholder="Search orders..." oninput="filterOrders();" aria-label="Search orders">
+        <label for="statusFilter" class="sr-only">Filter by status</label>
+        <select id="statusFilter" onchange="filterOrders();" aria-label="Filter by status">
           <option value="">All Status</option>
           <option value="Received">Received</option>
           <option value="Scanned">In Progress</option>
@@ -220,7 +228,7 @@
       </div>
 
       <!-- Order List -->
-      <div id="orderList"></div>
+      <div id="orderList" role="list" aria-live="polite" aria-label="Order list"></div>
 
       <!-- Empty State -->
       <div id="emptyState" class="empty-state" style="display:none;">
@@ -322,7 +330,7 @@
       var empty = document.getElementById('emptyState');
 
       if (orders.length === 0) {
-        list.innerHTML = '';
+        list.textContent = '';
         empty.style.display = 'block';
         return;
       }
@@ -330,19 +338,19 @@
 
       var html = '';
       orders.forEach(function(o, idx) {
-        var statusLower = (o.status || '').toLowerCase();
+        var statusLower = (o.status || '').toLowerCase().replace(/[^a-z]/g, '');
         var badgeClass = 'badge-' + statusLower;
         var statusLabel = o.status || 'Unknown';
         if (statusLower === 'scanned') statusLabel = 'In Progress';
 
-        html += '<div class="order-card status-' + statusLower + '" onclick="toggleCard(this)" data-idx="' + idx + '">';
+        html += '<div class="order-card status-' + statusLower + '" onclick="toggleCard(this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleCard(this);}" data-idx="' + idx + '" tabindex="0" role="button" aria-expanded="false">';
 
         // Top row
         html += '<div class="order-top">';
         html += '<div><div class="order-id">' + esc(o.csSample || o.csOrder || '—') + '</div>';
         if (o.sampleOrderNum) html += '<div class="order-ref">Order: ' + esc(o.sampleOrderNum) + '</div>';
         html += '</div>';
-        html += '<span class="status-badge ' + badgeClass + '">' + statusLabel + '</span>';
+        html += '<span class="status-badge ' + badgeClass + '">' + esc(statusLabel) + '</span>';
         html += '</div>';
 
         // Summary fields
@@ -355,8 +363,9 @@
 
         // Tracking link
         if (o.trackingNumber) {
-          if (o.trackingUrl) {
-            html += '<a class="tracking-link" href="' + esc(o.trackingUrl) + '" target="_blank" onclick="event.stopPropagation();">📦 Track: ' + esc(o.trackingNumber) + '</a>';
+          var safeUrl = sanitizeUrl(o.trackingUrl);
+          if (safeUrl) {
+            html += '<a class="tracking-link" href="' + esc(safeUrl) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();">📦 Track: ' + esc(o.trackingNumber) + '</a>';
           } else {
             html += '<span class="tracking-link">📦 ' + esc(o.trackingNumber) + '</span>';
           }
@@ -393,8 +402,16 @@
       return d.innerHTML;
     }
 
+    function sanitizeUrl(url) {
+      if (!url) return '';
+      var s = String(url).trim();
+      if (/^https?:\/\//i.test(s)) return s;
+      return '';
+    }
+
     function toggleCard(el) {
       el.classList.toggle('open');
+      el.setAttribute('aria-expanded', el.classList.contains('open') ? 'true' : 'false');
     }
 
     // ── Filter ──
@@ -437,6 +454,10 @@
               filterOrders(); // Re-render with current filters
               document.getElementById('refreshTime').textContent = new Date().toLocaleString();
             }
+          })
+          .withFailureHandler(function(err) {
+            // Silent on background refresh failure — don't disrupt user
+            console.warn('Auto-refresh failed:', err && err.message ? err.message : err);
           })
           .getPortalData(portalToken);
       }

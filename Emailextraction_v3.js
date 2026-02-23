@@ -431,7 +431,12 @@ function processPDFsFromGmail() {
   threads.forEach(function(thread, threadIndex) {
     var tThread = new Date();
     Logger.log('=== Processing thread ' + (threadIndex + 1) + '/' + threads.length + ' ===');
+    try {
     var messages = thread.getMessages();
+    if (!messages || messages.length === 0) {
+      Logger.log('Thread has no messages — skipping');
+      return;
+    }
     var message = messages[0];
 
     var emailBody = message.getPlainBody();
@@ -626,6 +631,12 @@ function processPDFsFromGmail() {
 
     thread.addLabel(getOrCreateLabel('PDF_Processed'));
     Logger.log('Thread ' + (threadIndex + 1) + ' done in ' + (new Date() - tThread) + 'ms');
+    } catch (threadErr) {
+      Logger.log('THREAD ERROR (skipping thread ' + (threadIndex + 1) + '): ' + threadErr);
+      if (typeof logError === 'function') {
+        logError('processPDFsFromGmail_thread', threadErr.toString(), { threadIndex: threadIndex });
+      }
+    }
   });
 
   try {
@@ -1695,6 +1706,7 @@ function getOrCreateSampleFolder(sampleId) {
 }
 
 function extractTextFromPDF(attachment) {
+  var fileId = null;
   try {
     var blob = attachment.copyBlob();
     var file = Drive.Files.insert(
@@ -1702,13 +1714,18 @@ function extractTextFromPDF(attachment) {
       blob,
       { ocr: true, convert: true }
     );
-    var doc = DocumentApp.openById(file.id);
+    fileId = file.id;
+    var doc = DocumentApp.openById(fileId);
     var text = doc.getBody().getText();
-    Drive.Files.remove(file.id);
     return text;
   } catch (e) {
     Logger.log('Error extracting PDF: ' + e.toString());
     return '';
+  } finally {
+    // Always clean up the temporary Drive file, even if extraction fails
+    if (fileId) {
+      try { Drive.Files.remove(fileId); } catch (ignore) {}
+    }
   }
 }
 

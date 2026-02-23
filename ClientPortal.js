@@ -63,7 +63,7 @@ function setupPortalAccess() {
 // ============================================================
 
 function generatePortalToken(customerName) {
-  Logger.log('generatePortalToken called for: ' + (customerName || '(prompt user)'));
+  Logger.log('generatePortalToken called for: ' + String(customerName || '(prompt user)').substring(0, 100).replace(/[\r\n]/g, ' '));
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(PORTAL_CONFIG.accessSheetName);
 
@@ -135,17 +135,21 @@ function _showPortalLink(customerName, token) {
   // Escape HTML entities in customer name to prevent XSS
   var safeName = String(customerName).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+  // Escape token for safe embedding in HTML attribute and JS contexts
+  var safeToken = String(token).replace(/[^A-Za-z0-9]/g, '');
+  var safeUrl = String(portalUrl).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
   var html = HtmlService.createHtmlOutput(
     '<div style="font-family:Arial;padding:15px;">' +
     '<h3 style="color:#2E5339;">✅ Portal Token Generated</h3>' +
     '<p><strong>Customer:</strong> ' + safeName + '</p>' +
-    '<p><strong>Token:</strong> <code style="background:#f0f0f0;padding:3px 8px;border-radius:4px;font-size:16px;">' + token + '</code></p>' +
+    '<p><strong>Token:</strong> <code style="background:#f0f0f0;padding:3px 8px;border-radius:4px;font-size:16px;">' + safeToken + '</code></p>' +
     '<p style="margin-top:15px;"><strong>Portal Link:</strong></p>' +
-    '<input type="text" value="' + portalUrl + '" readonly ' +
+    '<input type="text" id="portalUrl" value="' + safeUrl + '" readonly ' +
     'style="width:100%;padding:10px;font-size:12px;border:2px solid #2E5339;border-radius:6px;margin-bottom:10px;" ' +
     'onclick="this.select();">' +
     '<p style="font-size:11px;color:#666;">Share this link with ' + safeName + '. They can bookmark it — no login needed.</p>' +
-    '<button onclick="navigator.clipboard.writeText(\'' + portalUrl + '\');this.textContent=\'✅ Copied!\';setTimeout(function(){},2000);" ' +
+    '<button onclick="var u=document.getElementById(\'portalUrl\').value;navigator.clipboard.writeText(u);this.textContent=\'✅ Copied!\';setTimeout(function(){},2000);" ' +
     'style="padding:10px 20px;background:#2E5339;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">📋 Copy Link</button>' +
     '</div>'
   ).setWidth(500).setHeight(320);
@@ -194,19 +198,21 @@ function listPortalLinks() {
   var rows = '';
   data.forEach(function(row) {
     var active = row[3];
-    var token = row[2];
-    var url = webAppUrl + '?page=portal&token=' + token;
-    var logins = row[6] || 0;
+    var token = String(row[2]).replace(/[^A-Za-z0-9]/g, ''); // tokens are alphanumeric only
+    var url = webAppUrl + '?page=portal&token=' + encodeURIComponent(token);
+    var logins = parseInt(row[6]) || 0;
     var lastLogin = row[5] ? new Date(row[5]).toLocaleDateString() : 'Never';
-    var safeName = String(row[0]).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    var safeName = String(row[0]).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    var safeToken = String(token).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    var safeUrl = String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
     rows += '<tr style="' + (active ? '' : 'opacity:0.4;') + '">' +
       '<td>' + safeName + '</td>' +
-      '<td><code>' + token + '</code></td>' +
+      '<td><code>' + safeToken + '</code></td>' +
       '<td>' + (active ? '✅' : '❌') + '</td>' +
       '<td>' + logins + '</td>' +
       '<td>' + lastLogin + '</td>' +
-      '<td><a href="' + url + '" target="_blank" style="color:#1976d2;">Open</a></td>' +
+      '<td><a href="' + safeUrl + '" target="_blank" style="color:#1976d2;">Open</a></td>' +
       '</tr>';
   });
   

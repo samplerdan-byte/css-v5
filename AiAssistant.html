@@ -11,6 +11,7 @@
       flex-direction: column;
       height: 100vh;
       background: #f5f5f5;
+      font-size: 14px;
     }
 
     /* Header */
@@ -21,8 +22,8 @@
       text-align: center;
       flex-shrink: 0;
     }
-    .header h2 { font-size: 15px; margin: 0; letter-spacing: 0.5px; }
-    .header .sub { font-size: 10px; color: #8cc99e; margin-top: 2px; }
+    .header h2 { font-size: 16px; margin: 0; letter-spacing: 0.5px; }
+    .header .sub { font-size: 12px; color: #8cc99e; margin-top: 2px; }
 
     /* Messages area */
     .messages {
@@ -34,7 +35,7 @@
       margin-bottom: 10px;
       padding: 10px 12px;
       border-radius: 10px;
-      font-size: 13px;
+      font-size: 14px;
       line-height: 1.5;
       word-wrap: break-word;
       max-width: 95%;
@@ -57,21 +58,22 @@
       background: #f8d7da;
       color: #721c24;
       border: 1px solid #f5c6cb;
-      font-size: 12px;
+      border-left: 4px solid #dc3545;
+      font-size: 14px;
     }
     .msg-system {
       background: #e8f5e9;
       color: #2E5339;
       text-align: center;
-      font-size: 11px;
+      font-size: 13px;
       font-style: italic;
     }
 
     /* Loading dots */
     .loading { display: flex; gap: 4px; padding: 10px 12px; }
     .loading .dot {
-      width: 8px;
-      height: 8px;
+      width: 10px;
+      height: 10px;
       background: #2E5339;
       border-radius: 50%;
       animation: bounce 1.4s infinite ease-in-out both;
@@ -90,64 +92,69 @@
       border-top: 1px solid #e0e0e0;
       flex-shrink: 0;
     }
-    .input-row { display: flex; gap: 6px; }
+    .input-row { display: flex; gap: 6px; align-items: flex-end; }
     .input-row textarea {
       flex: 1;
-      padding: 10px;
-      font-size: 13px;
+      padding: 12px;
+      font-size: 14px;
       font-family: Arial, sans-serif;
       border: 2px solid #ddd;
       border-radius: 8px;
       resize: none;
-      min-height: 40px;
-      max-height: 80px;
+      min-height: 48px;
+      max-height: 120px;
     }
     .input-row textarea:focus {
       outline: none;
       border-color: #2E5339;
-      box-shadow: 0 0 0 2px rgba(46,83,57,0.2);
+      box-shadow: 0 0 0 3px rgba(46,83,57,0.25);
     }
     .send-btn {
-      padding: 10px 16px;
+      padding: 12px 18px;
       background: #2E5339;
       color: #fff;
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 15px;
       font-weight: bold;
       align-self: flex-end;
-      min-height: 44px;
-      min-width: 44px;
+      min-height: 48px;
+      min-width: 60px;
     }
     .send-btn:hover { background: #3a6249; }
-    .send-btn:disabled { background: #ccc; cursor: not-allowed; }
+    .send-btn:disabled { background: #999; cursor: not-allowed; }
+    .send-btn:focus { outline: 3px solid #ffbf00; outline-offset: 2px; }
 
     /* Suggested questions */
     .suggestions {
       padding: 8px 12px;
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 8px;
     }
     .suggestion {
-      padding: 6px 10px;
-      font-size: 11px;
+      padding: 10px 14px;
+      font-size: 13px;
       background: #e8f5e9;
       color: #2E5339;
       border: 1px solid #c8e6c9;
-      border-radius: 16px;
+      border-radius: 20px;
       cursor: pointer;
       white-space: nowrap;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
     }
     .suggestion:hover { background: #c8e6c9; }
+    .suggestion:focus { outline: 2px solid #2E5339; outline-offset: 2px; }
 
     /* Footer */
     .footer {
       text-align: center;
-      font-size: 9px;
-      color: #aaa;
-      padding: 4px;
+      font-size: 11px;
+      color: #888;
+      padding: 6px;
       flex-shrink: 0;
     }
   </style>
@@ -159,24 +166,26 @@
     <div class="sub">Ask questions about your order data</div>
   </div>
 
-  <div class="messages" id="messages">
-    <div class="msg msg-system">
+  <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Conversation">
+    <div class="msg msg-system" role="status">
       Ask me anything about orders, samples, shipments, or customers.
       I can only read data — I cannot make changes.
     </div>
-    <div class="suggestions" id="suggestions">
-      <span class="suggestion" onclick="askSuggestion(this)">How many orders are pending?</span>
-      <span class="suggestion" onclick="askSuggestion(this)">What shipped today?</span>
-      <span class="suggestion" onclick="askSuggestion(this)">Show orders from Volcafe</span>
-      <span class="suggestion" onclick="askSuggestion(this)">Which warehouses have live orders?</span>
+    <div class="suggestions" id="suggestions" role="group" aria-label="Suggested questions">
+      <button class="suggestion" onclick="askSuggestion(this)" type="button">How many orders are pending?</button>
+      <button class="suggestion" onclick="askSuggestion(this)" type="button">What shipped today?</button>
+      <button class="suggestion" onclick="askSuggestion(this)" type="button">Show orders from Volcafe</button>
+      <button class="suggestion" onclick="askSuggestion(this)" type="button">Which warehouses have live orders?</button>
     </div>
   </div>
 
   <div class="input-area">
     <div class="input-row">
+      <label for="questionInput" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">Ask a question about your orders</label>
       <textarea id="questionInput" placeholder="Ask a question..."
-                rows="1" onkeydown="handleKey(event)"></textarea>
-      <button class="send-btn" id="sendBtn" onclick="sendQuestion()">Ask</button>
+                rows="1" onkeydown="handleKey(event)"
+                aria-label="Ask a question about your orders"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendQuestion()" aria-label="Send question" type="button">Ask</button>
     </div>
   </div>
 
@@ -230,7 +239,7 @@
       })
       .withFailureHandler(function(err) {
         removeLoading(loadingId);
-        addMessage('Connection error: ' + err.message, 'error');
+        addMessage('Connection error. Please try again.', 'error');
         busy = false;
         document.getElementById('sendBtn').disabled = false;
         input.focus();
@@ -244,9 +253,12 @@
     div.className = 'msg msg-' + type;
 
     if (type === 'ai') {
-      // Escape HTML first, then preserve line breaks and bullets
-      div.innerHTML = escapeHtml(text)
-        .replace(/\n/g, '<br>');
+      // Safely render text with line breaks using DOM APIs
+      var lines = String(text).split('\n');
+      lines.forEach(function(line, idx) {
+        if (idx > 0) div.appendChild(document.createElement('br'));
+        div.appendChild(document.createTextNode(line));
+      });
     } else {
       div.textContent = text;
     }
@@ -261,7 +273,11 @@
     var id = 'loading-' + Date.now();
     div.id = id;
     div.className = 'loading';
-    div.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+    for (var i = 0; i < 3; i++) {
+      var dot = document.createElement('div');
+      dot.className = 'dot';
+      div.appendChild(dot);
+    }
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return id;
@@ -270,12 +286,6 @@
   function removeLoading(id) {
     var el = document.getElementById(id);
     if (el) el.remove();
-  }
-
-  function escapeHtml(text) {
-    var div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 
   // Auto-focus input

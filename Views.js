@@ -13,13 +13,16 @@ function createMyView() {
     return;
   }
 
-  var email = Session.getActiveUser().getEmail();
-  if (!email) {
+  var email = String(Session.getActiveUser().getEmail() || '').trim();
+  if (!email || email.indexOf('@') < 0) {
     ui.alert('Could not determine your email. Please make sure you are signed in.');
     return;
   }
   var userName = email.split('@')[0];
-  userName = userName.charAt(0).toUpperCase() + userName.slice(1);
+  userName = String(userName || '').trim();
+  if (userName.length > 0) {
+    userName = userName.charAt(0).toUpperCase() + userName.slice(1);
+  }
   var viewName = 'View - ' + userName;
 
   var existing = ss.getSheetByName(viewName);
@@ -70,13 +73,16 @@ function refreshMyView() {
     return;
   }
 
-  var email = Session.getActiveUser().getEmail();
-  if (!email) {
+  var email = String(Session.getActiveUser().getEmail() || '').trim();
+  if (!email || email.indexOf('@') < 0) {
     ui.alert('Could not determine your email. Please make sure you are signed in.');
     return;
   }
   var userName = email.split('@')[0];
-  userName = userName.charAt(0).toUpperCase() + userName.slice(1);
+  userName = String(userName || '').trim();
+  if (userName.length > 0) {
+    userName = userName.charAt(0).toUpperCase() + userName.slice(1);
+  }
   var viewName = 'View - ' + userName;
 
   var viewSheet = ss.getSheetByName(viewName);
@@ -106,11 +112,24 @@ function _refreshViewSheet(mainSheet, viewSheet) {
 
   var viewHeaders = viewSheet.getRange(1, 1, 1, viewLastCol).getValues()[0];
 
+  // Guard against null/undefined headers
+  if (!viewHeaders || viewHeaders.length === 0) {
+    Logger.log('_refreshViewSheet: no view headers found');
+    return 0;
+  }
+
   var mainLastRow = mainSheet.getLastRow();
   var mainLastCol = mainSheet.getLastColumn();
 
-  if (viewSheet.getLastRow() > 1) {
-    viewSheet.getRange(2, 1, viewSheet.getLastRow() - 1, viewLastCol).clear();
+  // Guard against invalid dimensions
+  if (mainLastCol < 1) {
+    Logger.log('_refreshViewSheet: main sheet has no columns');
+    return 0;
+  }
+
+  var viewSheetLastRow = viewSheet.getLastRow();
+  if (viewSheetLastRow > 1) {
+    viewSheet.getRange(2, 1, viewSheetLastRow - 1, viewLastCol).clear();
   }
 
   if (mainLastRow < 2) return 0;
@@ -120,14 +139,16 @@ function _refreshViewSheet(mainSheet, viewSheet) {
 
   var colMapping = [];
   for (var c = 0; c < viewHeaders.length; c++) {
-    colMapping.push(mainCol[viewHeaders[c]] !== undefined ? mainCol[viewHeaders[c]] : -1);
+    var headerName = String(viewHeaders[c] || '').trim();
+    colMapping.push(mainCol[headerName] !== undefined ? mainCol[headerName] : -1);
   }
 
   var viewData = [];
   for (var r = 0; r < mainData.length; r++) {
     var row = [];
     for (var c = 0; c < colMapping.length; c++) {
-      row.push(colMapping[c] >= 0 ? mainData[r][colMapping[c]] : '');
+      var value = colMapping[c] >= 0 ? mainData[r][colMapping[c]] : '';
+      row.push(String(value || '').trim());
     }
     viewData.push(row);
   }

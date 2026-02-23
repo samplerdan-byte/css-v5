@@ -40,11 +40,16 @@ function setupContacts() {
 
   // Build list of existing company names for duplicate check
   var existingNames = {};
-  if (sheet.getLastRow() >= 2) {
-    var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    var existing = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
     for (var i = 0; i < existing.length; i++) {
-      var key = String(existing[i][0]).trim() + '|' + String(existing[i][1]).trim().toLowerCase();
-      existingNames[key] = true;
+      var type = String(existing[i][0] || '').trim();
+      var company = String(existing[i][1] || '').trim().toLowerCase();
+      if (type && company) {
+        var key = type + '|' + company;
+        existingNames[key] = true;
+      }
     }
   }
 
@@ -190,13 +195,14 @@ function setupContacts() {
   var newRows = [];
 
   function addContact(type, contactArr) {
-    var company   = contactArr[0] || '';
-    var attention = contactArr[1] || '';
-    var address   = contactArr[2] || '';
-    var city      = contactArr[3] || '';
-    var state     = contactArr[4] || '';
-    var zip       = contactArr[5] || '';
+    var company   = String(contactArr[0] || '').trim();
+    var attention = String(contactArr[1] || '').trim();
+    var address   = String(contactArr[2] || '').trim();
+    var city      = String(contactArr[3] || '').trim();
+    var state     = String(contactArr[4] || '').trim();
+    var zip       = String(contactArr[5] || '').trim();
 
+    if (!company) return; // Skip empty company names
     var key = type + '|' + company.toLowerCase();
     if (existingNames[key]) return;
     existingNames[key] = true;
@@ -290,8 +296,9 @@ function saveNewContact(type, contactData) {
     if (lastRow >= 2) {
       var existing = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
       for (var i = 0; i < existing.length; i++) {
-        if (String(existing[i][0]).trim() === type &&
-            String(existing[i][1]).trim().toLowerCase() === company.toLowerCase()) {
+        var existingType = String(existing[i][0] || '').trim();
+        var existingCompany = String(existing[i][1] || '').trim().toLowerCase();
+        if (existingType === type && existingCompany === company.toLowerCase()) {
           return { success: true, message: 'Contact already exists' };
         }
       }
@@ -300,14 +307,14 @@ function saveNewContact(type, contactData) {
     sheet.appendRow([
       type,
       company,
-      contactData.attention || '',
-      contactData.address || '',
-      contactData.city || '',
-      contactData.state || '',
-      contactData.zip || '',
-      contactData.phone || '',
-      contactData.email || '',
-      contactData.notes || ''
+      String(contactData.attention || '').trim(),
+      String(contactData.address || '').trim(),
+      String(contactData.city || '').trim(),
+      String(contactData.state || '').trim(),
+      String(contactData.zip || '').trim(),
+      String(contactData.phone || '').trim(),
+      String(contactData.email || '').trim(),
+      String(contactData.notes || '').trim()
     ]);
 
     return { success: true, message: company + ' saved as ' + type };

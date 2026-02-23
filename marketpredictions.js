@@ -150,6 +150,7 @@ function getMarketPredictions_() {
  */
 function buildMarketIntelSheet() {
   try {
+    Logger.log('buildMarketIntelSheet() called');
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(MARKET_CONFIG.sheetName);
 
@@ -180,14 +181,15 @@ function buildMarketIntelSheet() {
     // ---- FORMATTING ----
     formatSheet_(sheet, row);
 
-    Logger.log('buildMarketIntelSheet: done, ' + (row - 1) + ' rows written');
+    Logger.log('buildMarketIntelSheet: complete, ' + (row - 1) + ' rows written');
     SpreadsheetApp.getActiveSpreadsheet().toast(
       'Market Intel updated for ' + MARKET_CONFIG.lastUpdated,
       'Market Predictions',
       5
     );
   } catch(e) {
-    Logger.log('buildMarketIntelSheet error: ' + e);
+    Logger.log('buildMarketIntelSheet: error: ' + e.message);
+    if (typeof logError === 'function') logError('buildMarketIntelSheet', 'Error building market intel sheet', { error: e.message });
     try { SpreadsheetApp.getUi().alert('Market Intel build failed: ' + e); } catch(e2) {}
   }
 }

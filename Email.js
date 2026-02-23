@@ -147,11 +147,11 @@ function sendDailyCustomerReports() {
       GmailApp.sendEmail(config.emails.join(','), subject, '', { htmlBody: body });
       sent++;
       sendStatus = 'Sent';
-      Logger.log('Sent report to ' + config.name + ': ' + config.emails.join(', '));
+      Logger.log('sendDailyCustomerReports: Sent report to ' + config.name + ': ' + config.emails.join(', '));
     } catch (e) {
       sendStatus = 'Failed: ' + e.message;
       failed.push(config.name + ': ' + e.message);
-      Logger.log('Failed to send to ' + config.name + ': ' + e);
+      if (typeof logError === 'function') logError('sendDailyCustomerReports', 'Failed to send to ' + config.name, { error: e.message, emails: config.emails.join(', ') });
     }
     sendResults[pattern] = sendStatus;
 
@@ -236,7 +236,7 @@ function getEmailHtmlFromLink(emailLink) {
   try {
     var match = String(emailLink).match(/\/([a-f0-9]+)$/i);
     if (!match) {
-      Logger.log('Could not extract thread ID from: ' + emailLink);
+      Logger.log('getEmailHtmlFromLink: Could not extract thread ID from: ' + emailLink);
       return null;
     }
 
@@ -245,12 +245,12 @@ function getEmailHtmlFromLink(emailLink) {
     try {
       thread = GmailApp.getThreadById(threadId);
     } catch (gmailErr) {
-      Logger.log('GmailApp.getThreadById() error for threadId ' + threadId + ': ' + gmailErr);
+      if (typeof logError === 'function') logError('getEmailHtmlFromLink', 'GmailApp.getThreadById() failed', { threadId: threadId, error: gmailErr.message });
       return null;
     }
 
     if (!thread) {
-      Logger.log('Thread not found: ' + threadId);
+      Logger.log('getEmailHtmlFromLink: Thread not found: ' + threadId);
       return null;
     }
 
@@ -277,7 +277,7 @@ function getEmailHtmlFromLink(emailLink) {
     };
 
   } catch (e) {
-    Logger.log('Error fetching email: ' + e);
+    if (typeof logError === 'function') logError('getEmailHtmlFromLink', 'Error fetching email', { emailLink: emailLink, error: e.message });
     return null;
   }
 }

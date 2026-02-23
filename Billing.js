@@ -270,9 +270,9 @@ function _autoBillSamples(movedRows, ss) {
         var serviceCode = _detectServiceCode(sample, rates);
         var rateInfo = rates[serviceCode] || rates['REG'] || { description: 'Regular Sample', rate: 28.00, unit: 'per sample' };
         var qty = 1;
-        var unitPrice = rateInfo.rate;
-        var lineTotal = qty * unitPrice;
-        subtotal += lineTotal;
+        var unitPrice = Math.round(rateInfo.rate * 100) / 100;  // cents-safe
+        var lineTotal = Math.round(qty * unitPrice * 100) / 100; // cents-safe
+        subtotal = Math.round((subtotal + lineTotal) * 100) / 100;
 
         lineItemRows.push([
           invoiceNum, lineNum, serviceCode, rateInfo.description,
@@ -283,15 +283,9 @@ function _autoBillSamples(movedRows, ss) {
         ]);
       }
 
-      // Write line items
-      if (lineItemRows.length > 0) {
-        var liLastRow = liSheet.getLastRow() + 1;
-        liSheet.getRange(liLastRow, 1, lineItemRows.length, lineItemRows[0].length).setValues(lineItemRows);
-        liSheet.getRange(liLastRow, 11, lineItemRows.length, 2).setNumberFormat('$#,##0.00');
-        totalBilled += lineItemRows.length;
-      }
-
-      // Write invoice header
+      // Write invoice header FIRST — if line items write fails the header is
+      // still orphaned, but at least the invoice number is reserved and the
+      // line items table won't have orphaned rows without a parent invoice.
       var total = subtotal;
       invSheet.appendRow([
         invoiceNum, today, dueDate, customerName,
@@ -303,6 +297,14 @@ function _autoBillSamples(movedRows, ss) {
       invSheet.getRange(invLastRow, 5, 1, 3).setNumberFormat('$#,##0.00');
       invSheet.getRange(invLastRow, 2, 1, 1).setNumberFormat('MM/dd/yyyy');
       invSheet.getRange(invLastRow, 3, 1, 1).setNumberFormat('MM/dd/yyyy');
+
+      // Write line items after header is committed
+      if (lineItemRows.length > 0) {
+        var liLastRow = liSheet.getLastRow() + 1;
+        liSheet.getRange(liLastRow, 1, lineItemRows.length, lineItemRows[0].length).setValues(lineItemRows);
+        liSheet.getRange(liLastRow, 11, lineItemRows.length, 2).setNumberFormat('$#,##0.00');
+        totalBilled += lineItemRows.length;
+      }
     }
 
     Logger.log('Auto-billed ' + totalBilled + ' samples across ' + customerNames.length + ' invoice(s)');
@@ -621,12 +623,12 @@ function generateInvoicesForCustomers(customerList) {
       var serviceCode = _detectServiceCode(sample, rates);
       var rateInfo = rates[serviceCode] || rates['REG'] || { description: 'Regular Sample', rate: 28.00, unit: 'per sample' };
       var qty = 1;
-      var unitPrice = rateInfo.rate;
-      var lineTotal = qty * unitPrice;
-      subtotal += lineTotal;
-      
+      var unitPrice = Math.round(rateInfo.rate * 100) / 100;  // cents-safe
+      var lineTotal = Math.round(qty * unitPrice * 100) / 100; // cents-safe
+      subtotal = Math.round((subtotal + lineTotal) * 100) / 100;
+
       if (sample.trackingNumber) hasShipping = true;
-      
+
       lineItemRows.push([
         invoiceNum, lineNum, serviceCode, rateInfo.description,
         sample.csSample, sample.csOrder, sample.container,
@@ -635,31 +637,35 @@ function generateInvoicesForCustomers(customerList) {
         customerName, sample.warehouse, sample.description
       ]);
     });
-    
+
     // Shipping fee NOT auto-added — most customers ship on their own account.
     // To add manually: insert a SHIP-FEE line item on the Invoice Line Items sheet.
     var shippingFee = 0;
-    var total = subtotal + shippingFee;
-    
-    if (lineItemRows.length > 0) {
-      var liLastRow = liSheet.getLastRow() + 1;
-      liSheet.getRange(liLastRow, 1, lineItemRows.length, lineItemRows[0].length).setValues(lineItemRows);
-      liSheet.getRange(liLastRow, 11, lineItemRows.length, 2).setNumberFormat('$#,##0.00');
-      totalLineItems += lineItemRows.length;
-    }
-    
+    var total = Math.round((subtotal + shippingFee) * 100) / 100;
+
+    // Write invoice header FIRST so the invoice record always exists before
+    // line items are committed.  An orphaned header (no lines) is recoverable;
+    // orphaned line items (no parent invoice) are not.
     invSheet.appendRow([
       invoiceNum, today, dueDate, customerName,
       subtotal, shippingFee, total, 'Draft',
       false, '', '', '', samples.length + ' samples',
       Session.getActiveUser().getEmail()
     ]);
-    
+
     var invLastRow = invSheet.getLastRow();
     invSheet.getRange(invLastRow, 5, 1, 3).setNumberFormat('$#,##0.00');
     invSheet.getRange(invLastRow, 2, 1, 1).setNumberFormat('MM/dd/yyyy');
     invSheet.getRange(invLastRow, 3, 1, 1).setNumberFormat('MM/dd/yyyy');
-    
+
+    // Write line items after header is committed
+    if (lineItemRows.length > 0) {
+      var liLastRow = liSheet.getLastRow() + 1;
+      liSheet.getRange(liLastRow, 1, lineItemRows.length, lineItemRows[0].length).setValues(lineItemRows);
+      liSheet.getRange(liLastRow, 11, lineItemRows.length, 2).setNumberFormat('$#,##0.00');
+      totalLineItems += lineItemRows.length;
+    }
+
     invoicesCreated++;
     Logger.log('✓ Invoice ' + invoiceNum + ' created for ' + customerName + ': $' + total.toFixed(2));
   });
@@ -994,19 +1000,25 @@ function exportInvoicesQBO() {
   var dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   var fileName = 'CSS_QBO_Invoices_' + dateStr + '.csv';
   
+  // createFile throws on failure — if it throws, marking never runs (correct).
   var folder = DriveApp.getRootFolder();
   var file = folder.createFile(fileName, csvContent, MimeType.CSV);
-  
-  var qbExportedCol = invCol['QB Exported'] + 1;
-  var qbExportDateCol = invCol['QB Export Date'] + 1;
-  var exportedNow = new Date();
-  // Write both QB columns in one setValues() call per row (adjacent columns)
-  unexported.forEach(function(inv) {
-    invSheet.getRange(inv.sheetRow, qbExportedCol, 1, 2).setValues([[true, exportedNow]]);
-  });
 
-  ui.alert(
-    '✅ QuickBooks Export Complete!\n\n' +
+  // Mark all rows as exported only after the file is confirmed created.
+  var qbExportedCol = invCol['QB Exported'] + 1;
+  var exportedNow = new Date();
+  var markErrors = 0;
+  for (var m = 0; m < unexported.length; m++) {
+    try {
+      // Write QB Exported (TRUE) and QB Export Date in one setValues call.
+      invSheet.getRange(unexported[m].sheetRow, qbExportedCol, 1, 2).setValues([[true, exportedNow]]);
+    } catch (markErr) {
+      markErrors++;
+      Logger.log('exportInvoicesQBO: failed to mark row ' + unexported[m].sheetRow + ' — ' + markErr);
+    }
+  }
+
+  var msg = '✅ QuickBooks Export Complete!\n\n' +
     'Exported ' + unexported.length + ' invoice(s) to:\n' +
     fileName + '\n\n' +
     'File: ' + file.getUrl() + '\n\n' +
@@ -1014,8 +1026,11 @@ function exportInvoicesQBO() {
     '1. Go to Settings (⚙️) → Import Data\n' +
     '2. Select "Invoices"\n' +
     '3. Upload this CSV file\n' +
-    '4. Map columns and import'
-  );
+    '4. Map columns and import';
+  if (markErrors > 0) {
+    msg += '\n\n⚠️ WARNING: ' + markErrors + ' invoice(s) could not be marked as exported. Check the Invoices sheet.';
+  }
+  ui.alert(msg);
 }
 
 
@@ -1099,27 +1114,36 @@ function exportInvoicesIIF() {
   var dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   var fileName = 'CSS_QB_Desktop_' + dateStr + '.iif';
   
+  // createFile throws on failure — if it throws, marking never runs (correct).
   var folder = DriveApp.getRootFolder();
   var file = folder.createFile(fileName, iif, MimeType.PLAIN_TEXT);
-  
-  var qbExportedCol = invCol['QB Exported'] + 1;
-  var qbExportDateCol = invCol['QB Export Date'] + 1;
-  var exportedNow = new Date();
-  // Write both QB columns in one setValues() call per row (adjacent columns)
-  unexported.forEach(function(inv) {
-    invSheet.getRange(inv.sheetRow, qbExportedCol, 1, 2).setValues([[true, exportedNow]]);
-  });
 
-  ui.alert(
-    '✅ QuickBooks Desktop Export Complete!\n\n' +
+  // Mark all rows as exported only after the file is confirmed created.
+  var qbExportedCol = invCol['QB Exported'] + 1;
+  var exportedNow = new Date();
+  var markErrors = 0;
+  for (var m = 0; m < unexported.length; m++) {
+    try {
+      // Write QB Exported (TRUE) and QB Export Date in one setValues call.
+      invSheet.getRange(unexported[m].sheetRow, qbExportedCol, 1, 2).setValues([[true, exportedNow]]);
+    } catch (markErr) {
+      markErrors++;
+      Logger.log('exportInvoicesIIF: failed to mark row ' + unexported[m].sheetRow + ' — ' + markErr);
+    }
+  }
+
+  var msg = '✅ QuickBooks Desktop Export Complete!\n\n' +
     'Exported ' + unexported.length + ' invoice(s) to:\n' +
     fileName + '\n\n' +
     'File: ' + file.getUrl() + '\n\n' +
     'To import into QuickBooks Desktop:\n' +
     '1. File → Utilities → Import → IIF Files\n' +
     '2. Select the downloaded .iif file\n' +
-    '3. Review imported invoices'
-  );
+    '3. Review imported invoices';
+  if (markErrors > 0) {
+    msg += '\n\n⚠️ WARNING: ' + markErrors + ' invoice(s) could not be marked as exported. Check the Invoices sheet.';
+  }
+  ui.alert(msg);
 }
 
 

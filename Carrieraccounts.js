@@ -224,6 +224,12 @@ function populateCarrierAccounts() {
   var pendingUps   = {};
   var newAppendRows = []; // rows to appendRow after bulk write (unmatched contacts)
 
+  // Validate fedexCol and upsCol are valid (>= 0)
+  if (fedexCol < 0 && upsCol < 0) {
+    SpreadsheetApp.getUi().alert('Error: FedEx and UPS columns not found. Run addCarrierColumns() first.');
+    return;
+  }
+
   // ── Match helper: try exact, then contains, then fuzzy ──
   function findContactRows(clipName) {
     var lower = clipName.toLowerCase().trim();
@@ -253,8 +259,8 @@ function populateCarrierAccounts() {
 
   // ── Apply FedEx accounts (accumulate, don't write yet) ──
   for (var f = 0; f < fedexAccounts.length; f++) {
-    var name = fedexAccounts[f][0];
-    var acct = fedexAccounts[f][1];
+    var name = String(fedexAccounts[f][0] || '').trim();
+    var acct = String(fedexAccounts[f][1] || '').trim();
     var rows = findContactRows(name);
     if (rows) {
       for (var r = 0; r < rows.length; r++) {
@@ -280,8 +286,8 @@ function populateCarrierAccounts() {
 
   // ── Apply UPS accounts (accumulate) ──
   for (var u = 0; u < upsAccounts.length; u++) {
-    var name2 = upsAccounts[u][0];
-    var acct2 = upsAccounts[u][1];
+    var name2 = String(upsAccounts[u][0] || '').trim();
+    var acct2 = String(upsAccounts[u][1] || '').trim();
     var rows2 = findContactRows(name2);
     if (rows2) {
       for (var r2 = 0; r2 < rows2.length; r2++) {
@@ -312,8 +318,8 @@ function populateCarrierAccounts() {
     // Sort row indices and write each individually (rows are non-contiguous)
     var indices = Object.keys(pending);
     for (var pi = 0; pi < indices.length; pi++) {
-      var rowNum = parseInt(indices[pi]) + 2; // 1-indexed sheet row (skip header)
-      sheet.getRange(rowNum, colNum).setValue(pending[indices[pi]]);
+      var rowNum = parseInt(indices[pi], 10) + 2; // 1-indexed sheet row (skip header), base 10 radix
+      sheet.getRange(rowNum, colNum).setValue(String(pending[indices[pi]] || '').trim());
     }
   }
   flushPendingColumn(pendingFedex, fedexCol + 1);

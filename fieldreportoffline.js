@@ -106,7 +106,9 @@ function generateOfflineFieldReport() {
     'var REPORT_DATA = ' + dataJson + ';\n' +
     'var PERMS = ' + permsJson + ';\n' +
     'var SYNC_URL = ' + JSON.stringify(syncUrl) + ';\n' +
-    'var SYNC_TOKEN = ' + JSON.stringify(PropertiesService.getScriptProperties().getProperty('WEBAPP_ACTION_TOKEN') || '') + ';\n' +
+    // Generate a short-lived offline sync token instead of embedding the master WEBAPP_ACTION_TOKEN
+    // This limits exposure — the offline HTML file only gets a dedicated sync token
+    'var SYNC_TOKEN = ' + JSON.stringify(_getOrCreateOfflineSyncToken()) + ';\n' +
     'var REPORT_ID = ' + JSON.stringify(reportId) + ';\n' +
     'var REPORT_DATE = ' + JSON.stringify(dateStr) + ';\n' +
     '\n' +
@@ -389,6 +391,27 @@ function generateOfflineFieldReport() {
 
 
 // ============================================================
+// OFFLINE SYNC TOKEN — separate from master WEBAPP_ACTION_TOKEN
+// Limits blast radius if offline HTML files are shared/leaked
+// ============================================================
+
+function _getOrCreateOfflineSyncToken() {
+  var props = PropertiesService.getScriptProperties();
+  var token = props.getProperty('OFFLINE_SYNC_TOKEN');
+  if (!token) {
+    // Generate a random token
+    var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    token = '';
+    for (var i = 0; i < 24; i++) {
+      token += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    props.setProperty('OFFLINE_SYNC_TOKEN', token);
+    Logger.log('Created new OFFLINE_SYNC_TOKEN');
+  }
+  return token;
+}
+
+// ============================================================
 // IMPORT OFFLINE EDITS
 // ============================================================
 function showImportOfflineEdits() {
@@ -439,17 +462,27 @@ function showImportOfflineEdits() {
 
 function importOfflineEdits(jsonStr) {
   var perms = getEditorPermissions();
-  if (!perms.canEdit) return { success: false, message: 'You do not have edit access.' };
+  if (!perms || !perms.canEdit) {
+    return { success: false, message: 'You do not have edit access.' };
+  }
 
-  var edits;
+  // Validate input
+  if (!jsonStr || typeof jsonStr !== 'string') {
+    return { success: false, message: 'Invalid input: expected JSON string.' };
+  }
+
+  var edits = null;
   try {
     edits = JSON.parse(jsonStr);
   } catch (e) {
     return { success: false, message: 'Invalid JSON: ' + e.message };
   }
 
-  if (!Array.isArray(edits) || edits.length === 0) {
-    return { success: false, message: 'No edits found. Expected a JSON array.' };
+  if (!Array.isArray(edits)) {
+    return { success: false, message: 'Expected a JSON array of edits.' };
+  }
+  if (edits.length === 0) {
+    return { success: false, message: 'No edits found.' };
   }
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -465,27 +498,58 @@ function importOfflineEdits(jsonStr) {
   var editsByRow = {};
   for (var i = 0; i < edits.length; i++) {
     var edit = edits[i];
-    if (!edit.row || !edit.column) {
+    if (!edit || typeof edit !== 'object') {
+      skipped++;
+      continue;
+    }
+
+    // Validate required edit fields
+    var rowNum = edit.row;
+    var colName = edit.column;
+    if (!rowNum || !colName) {
+      skipped++;
+      continue;
+    }
+
+    // Validate row number — must be data row (>= 2), not header
+    rowNum = parseInt(rowNum, 10);
+    if (isNaN(rowNum) || rowNum < 2) {
+      errors.push('Edit ' + i + ': invalid row number (must be >= 2)');
+      skipped++;
+      continue;
+    }
+
+    // Validate column name is a string
+    if (typeof colName !== 'string') {
+      errors.push('Edit ' + i + ': column name must be a string');
       skipped++;
       continue;
     }
 
     // Check column permission
-    if (perms.columns !== 'ALL' && perms.columns.indexOf(edit.column) === -1) {
-      errors.push('Row ' + edit.row + ': no permission for "' + edit.column + '"');
+    if (perms.columns !== 'ALL' && perms.columns.indexOf(colName) === -1) {
+      errors.push('Row ' + rowNum + ': no permission for "' + colName + '"');
       skipped++;
       continue;
     }
 
-    var colIdx = col[edit.column];
-    if (colIdx === undefined) {
-      errors.push('Column "' + edit.column + '" not found');
+    var colIdx = col[colName];
+    if (colIdx === undefined || colIdx === null) {
+      errors.push('Column "' + colName + '" not found');
       skipped++;
       continue;
     }
 
-    if (!editsByRow[edit.row]) editsByRow[edit.row] = [];
-    editsByRow[edit.row].push({ colIdx: colIdx, value: edit.value || '' });
+    // Validate column index
+    colIdx = parseInt(colIdx, 10);
+    if (isNaN(colIdx) || colIdx < 0) {
+      errors.push('Invalid column index for "' + colName + '"');
+      skipped++;
+      continue;
+    }
+
+    if (!editsByRow[rowNum]) editsByRow[rowNum] = [];
+    editsByRow[rowNum].push({ colIdx: colIdx, value: String(edit.value || '') });
   }
 
   // Apply edits in batched writes per row
@@ -534,21 +598,67 @@ function importOfflineEdits(jsonStr) {
 function doPost(e) {
   try {
     Logger.log('doPost: received request');
-    if (!e || !e.postData || !e.postData.contents) {
+
+    // Validate Content-Type header
+    var contentType = (e && e.postData && e.postData.type) ? String(e.postData.type).toLowerCase() : '';
+    if (contentType !== 'text/plain' && contentType !== 'application/json') {
+      Logger.log('doPost: unexpected Content-Type: ' + contentType);
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Invalid Content-Type' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Validate request structure
+    if (!e || typeof e !== 'object') {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Invalid request' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    if (!e.postData || typeof e.postData !== 'object') {
       return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Empty request body' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    var payload = JSON.parse(e.postData.contents);
+    if (!e.postData.contents || typeof e.postData.contents !== 'string') {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Empty request body' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var payload = null;
+    try {
+      payload = JSON.parse(e.postData.contents);
+    } catch (parseErr) {
+      Logger.log('doPost: JSON parse error: ' + parseErr.message);
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Invalid JSON in request body' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Validate payload is an object
+    if (!payload || typeof payload !== 'object') {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Invalid payload structure' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 
     // Auth check — require token for all POST actions
     var token = payload.token || '';
-    var expectedToken = PropertiesService.getScriptProperties().getProperty('WEBAPP_ACTION_TOKEN');
-    if (!expectedToken || token !== expectedToken) {
+    if (typeof token !== 'string') {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Invalid token' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var props = PropertiesService.getScriptProperties();
+    var expectedToken = props.getProperty('WEBAPP_ACTION_TOKEN');
+    var offlineSyncToken = props.getProperty('OFFLINE_SYNC_TOKEN');
+    var tokenValid = (expectedToken && token === expectedToken) || (offlineSyncToken && token === offlineSyncToken);
+    if (!tokenValid) {
       return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Unauthorized' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    if (payload.action === 'syncFieldReport' && Array.isArray(payload.edits)) {
+    var action = payload.action || '';
+    if (typeof action !== 'string') {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Invalid action' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'syncFieldReport' && Array.isArray(payload.edits)) {
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.mainSheetName);
       if (!sheet) {
         return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Sheet not found' }))
@@ -559,14 +669,22 @@ function doPost(e) {
       var applied = 0;
 
       // Group edits by row for batched writes
+      var lastRow = sheet.getLastRow();
       var editsByRow = {};
       for (var i = 0; i < payload.edits.length; i++) {
         var edit = payload.edits[i];
         if (!edit.row || !edit.column) continue;
+        // Validate row number — must be a data row (>= 2) and within sheet bounds
+        var editRow = parseInt(edit.row, 10);
+        if (isNaN(editRow) || editRow < 2 || editRow > lastRow + 100) continue; // +100 grace for concurrent adds
+        // Validate column name is a string
+        if (typeof edit.column !== 'string') continue;
         var colIdx = col[edit.column];
         if (colIdx === undefined) continue;
-        if (!editsByRow[edit.row]) editsByRow[edit.row] = [];
-        editsByRow[edit.row].push({ colIdx: colIdx, value: edit.value || '' });
+        // Sanitize value — must be a string or number
+        var editValue = (edit.value === null || edit.value === undefined) ? '' : String(edit.value).substring(0, 1000);
+        if (!editsByRow[editRow]) editsByRow[editRow] = [];
+        editsByRow[editRow].push({ colIdx: colIdx, value: editValue });
       }
 
       var rowKeys = Object.keys(editsByRow);
@@ -602,7 +720,8 @@ function doPost(e) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Unknown action' }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ success: false, message: err.toString() }))
+    Logger.log('doPost unhandled error: ' + String(err).substring(0, 500).replace(/[\r\n]/g, ' '));
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Server error processing request' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
 }

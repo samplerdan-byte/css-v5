@@ -55,8 +55,8 @@ function askAiAssistant(userQuestion) {
     return _callClaude(prompt.system, prompt.user, apiKey);
 
   } catch (e) {
-    logError('askAiAssistant', e.message, { question: userQuestion });
-    return { success: false, message: 'Error: ' + e.message };
+    logError('askAiAssistant', e.message, { question: String(userQuestion).substring(0, 200).replace(/[\r\n]/g, ' ') });
+    return { success: false, message: 'An error occurred processing your question. Please try again.' };
   }
 }
 
@@ -217,7 +217,12 @@ function _callClaude(systemPrompt, userMessage, apiKey) {
 
   if (code !== 200) {
     var errorBody = response.getContentText();
-    logError('_callClaude', 'HTTP ' + code, { body: errorBody.substring(0, 500) });
+    // Scrub any API key fragments from error body before logging
+    var sanitizedBody = errorBody.substring(0, 500);
+    if (apiKey && apiKey.length > 8) {
+      sanitizedBody = sanitizedBody.replace(new RegExp(apiKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '[REDACTED]');
+    }
+    logError('_callClaude', 'HTTP ' + code, { body: sanitizedBody });
 
     if (code === 401) {
       return { success: false, message: 'API key invalid. Check ANTHROPIC_API_KEY in Script Properties.' };

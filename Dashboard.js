@@ -419,6 +419,8 @@ function _computeDashMetrics(ss, mainSheet, completedSheet, invSheet, now) {
   var billingStats = { draft: 0, sent: 0, paid: 0, overdue: 0, draftAmt: 0, sentAmt: 0, paidAmt: 0, overdueAmt: 0 };
   if (invSheet && invSheet.getLastRow() >= 2) {
     var invCol = _getColumnMap(invSheet);
+    // Guard: skip billing stats if the sheet is missing expected columns.
+    if (invCol['Status'] !== undefined && invCol['Total'] !== undefined) {
     var invData = invSheet.getRange(2, 1, invSheet.getLastRow() - 1, invSheet.getLastColumn()).getValues();
     for (var j = 0; j < invData.length; j++) {
       var invStatus = String(invData[j][invCol['Status']]).trim();
@@ -434,6 +436,7 @@ function _computeDashMetrics(ss, mainSheet, completedSheet, invSheet, now) {
       else if (invStatus === 'Paid') { billingStats.paid++; billingStats.paidAmt += invTotal; }
       else if (invStatus === 'Overdue') { billingStats.overdue++; billingStats.overdueAmt += invTotal; }
     }
+    } // end guard: invCol has Status and Total
   }
 
   // Attach billing/turnaround to metrics for cache transport

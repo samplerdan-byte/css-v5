@@ -18,7 +18,7 @@ function processManualOrderEntry(orderData) {
     return { success: false, message: 'No samples provided. Add at least one sample.' };
   }
 
-  Logger.log('processManualOrderEntry: ' + orderData.samples.length + ' sample(s), customer=' + (orderData.customer || 'none'));
+  Logger.log('processManualOrderEntry: ' + orderData.samples.length + ' sample(s), customer=' + String(orderData.customer || 'none').substring(0, 100).replace(/[\r\n]/g, ' '));
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(CONFIG.mainSheetName);
@@ -100,8 +100,8 @@ function processManualOrderEntry(orderData) {
     Logger.log('processManualOrderEntry success: added ' + results.length + ' sample(s)');
     return { success: true, message: '✅ Added ' + results.length + ' sample(s): ' + results.join(', ') };
   } catch (e) {
-    Logger.log('processManualOrderEntry error: ' + e.toString());
-    return { success: false, message: 'Error: ' + e.toString() };
+    Logger.log('processManualOrderEntry error: ' + String(e).substring(0, 500).replace(/[\r\n]/g, ' '));
+    return { success: false, message: 'Error processing manual order entry. Please try again.' };
   }
 }
 
@@ -113,17 +113,22 @@ function showEnhancedManualEntry() {
   var customers = typeof getCustomerList === 'function' ? getCustomerList() : [];
   var warehouses = typeof getWarehouseList === 'function' ? getWarehouseList() : [];
   var contacts = typeof getContactsList === 'function' ? getContactsList() : { shippers: [], receivers: [] };
-  
+
+  // HTML-escape helper to prevent XSS via sheet data in option tags
+  function escHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   let customerOptions = '<option value="">-- Select or type new --</option>';
   for (const c of customers) {
-    customerOptions += '<option value="' + c.key + '">' + c.name + '</option>';
+    customerOptions += '<option value="' + escHtml(c.key) + '">' + escHtml(c.name) + '</option>';
   }
-  
+
   let warehouseOptions = '<option value="">-- Select --</option>';
   for (const w of warehouses) {
-    warehouseOptions += '<option value="' + w.key + '">' + w.name + '</option>';
+    warehouseOptions += '<option value="' + escHtml(w.key) + '">' + escHtml(w.name) + '</option>';
   }
-  
+
   const template = HtmlService.createTemplateFromFile('ManualOrderEntry');
   template.customerOptions = customerOptions;
   template.warehouseOptions = warehouseOptions;

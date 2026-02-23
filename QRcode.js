@@ -66,13 +66,22 @@ function getQRCodeUrl(qrData, size) {
 function parseQRData(code) {
   Logger.log('parseQRData: Processing code length=' + (code ? code.length : 0));
   try {
+    // Input validation
+    if (!code) {
+      return { success: false, message: 'Empty QR code' };
+    }
+    var codeStr = String(code).trim();
+    if (codeStr.length === 0) {
+      return { success: false, message: 'Empty QR code after trim' };
+    }
+
     var fields = {
       sampleOrderNum: '', cargo: '', mark: '', container: '', reference: '',
       description: '', bagCount: '', weight: '', sampleWeight: '',
       pNumber: '', sNumber: '', warehouse: '', originalSampleNum: ''
     };
 
-    var cleanCode = code;
+    var cleanCode = codeStr;
 
     // Try to extract the full labeled QR pattern if embedded in noise
     if (code.indexOf('ORDER:') !== -1 && code.indexOf('CARGO:') !== -1) {
@@ -141,8 +150,11 @@ function parseQRData(code) {
     // ── Format 2: Pipe-delimited positional ──
     if (cleanCode.indexOf('|') !== -1) {
       var parts = cleanCode.split('|');
+      if (!Array.isArray(parts) || parts.length === 0) {
+        return { success: false, message: 'Invalid pipe-delimited format' };
+      }
       parts.forEach(function(part) {
-        var t = String(part).trim();
+        var t = String(part || '').trim();
         if (!t) return;
         if (/^\d{6}-\d{2}$/.test(t)) fields.originalSampleNum = t;
         else if (/^[A-Z]{4}\d{7}$/.test(t)) fields.container = t;
@@ -150,7 +162,10 @@ function parseQRData(code) {
         else if (/^C\d{6}$/.test(t)) fields.cargo = t;
         else if (/^P\d+[-]\d+/.test(t)) { fields.reference = t; fields.pNumber = t; }
         else if (/warehouse/i.test(t)) fields.warehouse = t;
-        else if (/^\d{1,4}$/.test(t) && parseInt(t) > 10) fields.bagCount = t;
+        else if (/^\d{1,4}$/.test(t)) {
+          var bagNum = parseInt(t, 10);
+          if (!isNaN(bagNum) && bagNum > 10) fields.bagCount = t;
+        }
         else if (/\d+\s*(LB|lb|kg|KG)/i.test(t)) {
           if (!fields.sampleWeight) fields.sampleWeight = t; else fields.weight = t;
         }

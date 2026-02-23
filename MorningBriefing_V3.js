@@ -78,10 +78,11 @@ function _removeBriefingTriggers() {
 
 function sendMorningBriefing() {
   try {
+    Logger.log('sendMorningBriefing() called');
     // Weekend skip
     if (BRIEFING_CONFIG.skipWeekends) {
       var dow = new Date().getDay();
-      if (dow === 0 || dow === 6) { Logger.log('Briefing: skipping weekend'); return; }
+      if (dow === 0 || dow === 6) { Logger.log('sendMorningBriefing: skipping weekend'); return; }
     }
 
     if (!BRIEFING_CONFIG.recipientEmail) {
@@ -89,7 +90,7 @@ function sendMorningBriefing() {
       return;
     }
 
-    Logger.log('sendMorningBriefing: gathering data');
+    Logger.log('sendMorningBriefing: gathering briefing data');
     var b = _gatherBriefingData();
     var html = _buildBriefingHtml(b);
     var subject = BRIEFING_CONFIG.subjectPrefix + ' — ' + b.date;
@@ -98,12 +99,13 @@ function sendMorningBriefing() {
       '\nPending: ' + b.pendingUnscanned.length + ' unscanned, ' + b.scannedReady.length + ' ready';
 
     MailApp.sendEmail({ to: BRIEFING_CONFIG.recipientEmail, subject: subject, body: plain, htmlBody: html });
-    Logger.log('Briefing sent to ' + BRIEFING_CONFIG.recipientEmail);
+    Logger.log('sendMorningBriefing: briefing sent to ' + BRIEFING_CONFIG.recipientEmail);
 
     try { SpreadsheetApp.getUi().alert('✅ Briefing sent to ' + BRIEFING_CONFIG.recipientEmail); }
     catch(e) {}
   } catch(e) {
-    Logger.log('sendMorningBriefing error: ' + e);
+    Logger.log('sendMorningBriefing: error: ' + e.message);
+    if (typeof logError === 'function') logError('sendMorningBriefing', 'Error sending briefing email', { recipient: BRIEFING_CONFIG.recipientEmail, error: e.message });
     try { SpreadsheetApp.getUi().alert('Briefing failed: ' + e); } catch(e2) {}
   }
 }
@@ -113,12 +115,18 @@ function sendMorningBriefing() {
 // ============================================================
 
 function showBriefingNow() {
-  var b = _gatherBriefingData();
-  var sidebarHtml = _buildSidebarHtml(b);
-  var htmlOutput = HtmlService.createHtmlOutput(sidebarHtml)
-    .setTitle('☀️ Quick Brief')
-    .setWidth(320);
-  SpreadsheetApp.getUi().showSidebar(htmlOutput);
+  try {
+    Logger.log('showBriefingNow() called');
+    var b = _gatherBriefingData();
+    var sidebarHtml = _buildSidebarHtml(b);
+    var htmlOutput = HtmlService.createHtmlOutput(sidebarHtml)
+      .setTitle('☀️ Quick Brief')
+      .setWidth(320);
+    SpreadsheetApp.getUi().showSidebar(htmlOutput);
+  } catch(e) {
+    Logger.log('showBriefingNow: error: ' + e.message);
+    if (typeof logError === 'function') logError('showBriefingNow', 'Error displaying briefing sidebar', { error: e.message });
+  }
 }
 
 // ============================================================
@@ -126,12 +134,14 @@ function showBriefingNow() {
 // ============================================================
 
 function _gatherBriefingData() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var now = new Date();
-  var today = _startOfDay(now);
-  var yesterday = new Date(today.getTime() - 86400000);
-  var weekAgo = new Date(today.getTime() - 7 * 86400000);
-  var monthAgo = new Date(today.getTime() - 30 * 86400000);
+  try {
+    Logger.log('_gatherBriefingData: gathering briefing data');
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var now = new Date();
+    var today = _startOfDay(now);
+    var yesterday = new Date(today.getTime() - 86400000);
+    var weekAgo = new Date(today.getTime() - 7 * 86400000);
+    var monthAgo = new Date(today.getTime() - 30 * 86400000);
   
   var b = {
     date: Utilities.formatDate(now, BRIEFING_CONFIG.timezone, 'EEEE, MMMM d, yyyy'),
@@ -292,8 +302,29 @@ function _gatherBriefingData() {
       }
     }
   }
-  
-  return b;
+
+    return b;
+  } catch (e) {
+    Logger.log('_gatherBriefingData: error: ' + e.message);
+    if (typeof logError === 'function') logError('_gatherBriefingData', 'Error gathering briefing data', { error: e.message });
+    return {
+      date: Utilities.formatDate(new Date(), BRIEFING_CONFIG.timezone, 'EEEE, MMMM d, yyyy'),
+      time: Utilities.formatDate(new Date(), BRIEFING_CONFIG.timezone, 'h:mm a'),
+      receivedYesterday: [],
+      pendingUnscanned: [],
+      scannedReady: [],
+      shippedYesterday: [],
+      containersToday: [],
+      containersOverdue: [],
+      overdueInvoices: [],
+      needsReview: 0,
+      recentErrors: [],
+      byClient: {},
+      statsWeek: { received: 0, shipped: 0 },
+      statsMonth: { received: 0, shipped: 0 },
+      statsTotal: { received: 0, scanned: 0, shipped: 0 }
+    };
+  }
 }
 
 // ============================================================

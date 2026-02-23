@@ -785,33 +785,52 @@ function markCoverSheetsAsPrinted() {
   }
   
   var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return '✅ Marked 0 samples as printed';
+
   var allData = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  
+
   var today = new Date();
   today.setHours(0, 0, 0, 0);
   var timestampIdx = col['Timestamp'];
   var printedCol = coverSheetPrintedIdx + 1;
-  
-  var count = 0;
+
+  if (timestampIdx === undefined) return 'Error: Timestamp column not found';
+
+  var now = new Date();
+  var rowsToMark = [];
   for (var i = 0; i < allData.length; i++) {
     var timestamp = allData[i][timestampIdx];
+    if (!timestamp) continue;
     var rowDate = new Date(timestamp);
+    if (isNaN(rowDate.getTime())) continue;
     rowDate.setHours(0, 0, 0, 0);
-    
+
     if (rowDate.getTime() === today.getTime() && !allData[i][coverSheetPrintedIdx]) {
-      sheet.getRange(i + 2, printedCol).setValue(new Date());
-      count++;
+      rowsToMark.push(i + 2);
     }
   }
-  
-  return '✅ Marked ' + count + ' samples as printed';
+
+  // Batch write using RangeList (1 API call instead of N)
+  if (rowsToMark.length > 0) {
+    var a1List = rowsToMark.map(function(r) {
+      return sheet.getRange(r, printedCol).getA1Notation();
+    });
+    sheet.getRangeList(a1List).setValue(now);
+  }
+
+  return '✅ Marked ' + rowsToMark.length + ' samples as printed';
 }
 
 function clearCoverSheetPrintedFlags() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(CONFIG.mainSheetName);
   const ui = SpreadsheetApp.getUi();
-  
+
+  if (!sheet) {
+    ui.alert('Main sheet not found');
+    return;
+  }
+
   var col = _getColumnMap(sheet);
   var coverSheetPrintedIdx = col['Cover Sheet Printed'];
   
@@ -1400,18 +1419,21 @@ function _buildOrderCache(sheet) {
   if (lastRow <= 1) return cache;
 
   var col = _getColumnMap(sheet);
-  var numRows = Math.min(500, lastRow - 1);
-  var startRow = lastRow - numRows + 1;
-  var data = sheet.getRange(startRow, 1, numRows, sheet.getLastColumn()).getValues();
-
   var csOrderCol = col['CS Order #'];
   var csSampleCol = col['CS Sample #'];
   var sampleOrdCol = col['Sample Order #'];
 
+  // If essential columns are missing, return default cache (safe: lock in addDataToSheet will validate)
+  if (csOrderCol === undefined) return cache;
+
+  var numRows = Math.min(500, lastRow - 1);
+  var startRow = lastRow - numRows + 1;
+  var data = sheet.getRange(startRow, 1, numRows, sheet.getLastColumn()).getValues();
+
   for (var i = 0; i < data.length; i++) {
     var rowCSOrder = data[i][csOrderCol];
-    var rowCSSample = data[i][csSampleCol];
-    var rowSampleOrder = data[i][sampleOrdCol];
+    var rowCSSample = (csSampleCol !== undefined) ? data[i][csSampleCol] : null;
+    var rowSampleOrder = (sampleOrdCol !== undefined) ? data[i][sampleOrdCol] : null;
 
     if (rowCSOrder) {
       var orderNum = parseInt(String(rowCSOrder).replace(/\D/g, ''));
@@ -1565,6 +1587,7 @@ function getNextSampleInOrder(orderNum) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(CONFIG.mainSheetName);
 
+  if (!sheet) return 1;
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return 1;
 
@@ -1709,20 +1732,17 @@ function addDataToSheet(sheet, data, options) {
     // Append the row
     sheet.appendRow(row);
 
-    // --- END CRITICAL SECTION: release lock before post-processing ---
-    lock.releaseLock();
-    lockAcquired = false;
-
-    // Get the last row number for post-processing
+    // Capture the row number while still under lock — prevents a concurrent writer
+    // from appending another row before we read lastRow for checkbox/hyperlink inserts.
     var lastRow = sheet.getLastRow();
 
-    // Add checkbox to Print column for new row
+    // Add checkbox to Print column for new row (inside lock window)
     var printColIdx = col['Print'];
     if (printColIdx !== undefined) {
       sheet.getRange(lastRow, printColIdx + 1).insertCheckboxes();
     }
 
-    // Format tracking link if present
+    // Format tracking link if present (inside lock window)
     if (data.trackingNumber) {
       var trackingCol = col['Tracking Number'];
       if (trackingCol !== undefined) {
@@ -1734,6 +1754,10 @@ function addDataToSheet(sheet, data, options) {
     }
 
     Logger.log('✓ Row added: ' + data.container + ' | CS Order: ' + csOrderNumber + ' | Sample: ' + csSampleNumber + ' | Status: Received');
+
+    // --- END CRITICAL SECTION: release lock ---
+    lock.releaseLock();
+    lockAcquired = false;
 
     // Skip live update in batch mode
     if (!options.skipLiveUpdate) {

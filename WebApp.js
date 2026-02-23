@@ -8,8 +8,16 @@
 // ============================================================
 
 function doGet(e) {
-  var page = (e && e.parameter && e.parameter.page) ? e.parameter.page : 'main';
-  var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : '';
+  var page = (e && e.parameter && e.parameter.page) ? String(e.parameter.page) : 'main';
+  var action = (e && e.parameter && e.parameter.action) ? String(e.parameter.action) : '';
+
+  // Validate page parameter against allowlist
+  var validPages = ['main', 'scanner', 'portal'];
+  if (validPages.indexOf(page) === -1) page = 'main';
+
+  // Validate action parameter against allowlist
+  var validActions = ['', 'import', 'refresh', 'process'];
+  if (validActions.indexOf(action) === -1) action = '';
 
   // Remote action triggers (called via URL) — require token auth
   if (action === 'import' || action === 'refresh' || action === 'process') {
@@ -76,7 +84,7 @@ function doGet(e) {
 
 function webAppProcessQR(qrText) {
   try {
-    Logger.log('WebApp QR scan: ' + qrText);
+    Logger.log('WebApp QR scan: ' + String(qrText).substring(0, 200).replace(/[\r\n]/g, ' '));
     
     // Parse QR data — CSS labels use pipe-delimited format
     // ORDER:xxx|CARGO:xxx|MARK:xxx|CONTAINER:xxx|REF:xxx|DESC:xxx|BAGS:xxx|WEIGHT:xxx|SAMPLE:xxx|P:xxx|S:xxx|WAREHOUSE:xxx|CS_SAMPLE:xxx
@@ -130,8 +138,8 @@ function webAppProcessQR(qrText) {
     return _webLookupSample(qrText.trim());
     
   } catch (e) {
-    Logger.log('WebApp QR error: ' + e);
-    return { success: false, message: '❌ Error processing QR: ' + e.message };
+    Logger.log('WebApp QR error: ' + String(e).substring(0, 500).replace(/[\r\n]/g, ' '));
+    return { success: false, message: '❌ Error processing QR code. Please try again.' };
   }
 }
 
@@ -292,8 +300,8 @@ function webAppSubmitOrder(orderData) {
     
     return { success: true, message: '✅ Order submitted successfully' };
   } catch (e) {
-    Logger.log('webAppSubmitOrder error: ' + e);
-    return { success: false, message: '❌ Error: ' + e.message };
+    Logger.log('webAppSubmitOrder error: ' + String(e).substring(0, 500).replace(/[\r\n]/g, ' '));
+    return { success: false, message: '❌ Error submitting order. Please try again.' };
   }
 }
 
@@ -303,7 +311,9 @@ function webAppSubmitOrder(orderData) {
 
 function webAppProcessPDF(base64Data, fileName) {
   try {
-    Logger.log('WebApp PDF drop: ' + fileName + ' (' + base64Data.length + ' chars)');
+    // Sanitize filename for logging — strip newlines, limit length
+    var safeFileName = String(fileName || 'unknown').substring(0, 100).replace(/[\r\n]/g, ' ');
+    Logger.log('WebApp PDF drop: ' + safeFileName + ' (' + (base64Data ? base64Data.length : 0) + ' chars)');
     
     // Decode base64 to blob
     var decoded = Utilities.base64Decode(base64Data);
@@ -347,8 +357,8 @@ function webAppProcessPDF(base64Data, fileName) {
     };
     
   } catch (e) {
-    Logger.log('PDF processing error: ' + e);
-    return { success: false, message: '❌ PDF error: ' + e.message + '\n\nTry manual entry instead.' };
+    Logger.log('PDF processing error: ' + String(e).substring(0, 500).replace(/[\r\n]/g, ' '));
+    return { success: false, message: '❌ PDF processing failed. Try manual entry instead.' };
   }
 }
 

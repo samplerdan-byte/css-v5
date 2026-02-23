@@ -15,7 +15,14 @@ function _getColumnMap(sheet) {
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     if (!headers || headers.length === 0) return {};
     var col = {};
-    headers.forEach(function(h, i) { col[h] = i; });
+    headers.forEach(function(h, i) {
+      var key = String(h).trim();
+      if (key === '') return; // skip blank header cells
+      if (col[key] !== undefined) {
+        Logger.log('_getColumnMap WARNING: duplicate column "' + key + '" in sheet "' + name + '" (col ' + col[key] + ' and col ' + i + ') — second occurrence wins');
+      }
+      col[key] = i;
+    });
     _colMapCache[name] = col;
     return col;
   } catch (e) {

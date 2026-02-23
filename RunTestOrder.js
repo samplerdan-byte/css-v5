@@ -144,9 +144,15 @@ function clearTestOrders() {
 
   var col = _getColumnMap(sheet);
   var commentsIdx = col['Comments'];
-  if (commentsIdx === undefined) {
+  if (commentsIdx === undefined || commentsIdx === null) {
     Logger.log('clearTestOrders: Comments column not found');
     ui.alert('Comments column not found.');
+    return;
+  }
+  // Ensure column index is a number
+  if (typeof commentsIdx !== 'number' || isNaN(commentsIdx) || commentsIdx < 0) {
+    Logger.log('clearTestOrders: Invalid column index: ' + commentsIdx);
+    ui.alert('Invalid Comments column index.');
     return;
   }
 
@@ -230,14 +236,27 @@ function shipAllTestOrders() {
   }
 
   var col = _getColumnMap(sheet);
+  if (!col || typeof col !== 'object') {
+    Logger.log('shipAllTestOrders: Invalid column map');
+    ui.alert('Column mapping failed.');
+    return;
+  }
+
   var commentsIdx = col['Comments'];
   var statusIdx = col['Status'];
   var trackingIdx = col['Tracking Number'];
   var shipDateIdx = col['Shipped Date'];
 
-  if (commentsIdx === undefined || statusIdx === undefined) {
+  // Validate required column indices
+  if (commentsIdx === undefined || commentsIdx === null || statusIdx === undefined || statusIdx === null) {
     Logger.log('shipAllTestOrders: Required columns not found');
     ui.alert('Required columns not found (Comments, Status).');
+    return;
+  }
+  if (typeof commentsIdx !== 'number' || isNaN(commentsIdx) || commentsIdx < 0 ||
+      typeof statusIdx !== 'number' || isNaN(statusIdx) || statusIdx < 0) {
+    Logger.log('shipAllTestOrders: Invalid column indices');
+    ui.alert('Invalid column indices.');
     return;
   }
 
