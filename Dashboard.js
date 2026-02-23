@@ -10,6 +10,15 @@
 // Can also be triggered on a time-based trigger for auto-refresh
 // ============================================================
 
+// V5: cache invalidation — call after any data-changing operation
+function invalidateDashboardCache() {
+  try {
+    PropertiesService.getScriptProperties().deleteProperty('DASH_METRICS_CACHE');
+  } catch (e) {
+    Logger.log('invalidateDashboardCache: ' + e.message);
+  }
+}
+
 var DASH_CONFIG = {
   sheetName: 'Dashboard',
   headerBg: '#2E5339',

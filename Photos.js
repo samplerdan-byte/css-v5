@@ -578,6 +578,17 @@ var allMatches = [];        /* full match data from search */
 var pendingFile = null;     /* { base64, name, mimeType } */
 var currentViewSample = null;
 
+/* HTML escape helper — prevents XSS when building innerHTML from data */
+function esc(s) { var d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
+
+/* URL sanitizer — only allow safe URL schemes */
+function safeUrl(url) {
+  if (!url) return "#";
+  var s = String(url).trim();
+  if (/^https?:\\/\\//i.test(s)) return s;
+  return "#";
+}
+
 /* ============================================================
    SEARCH
    ============================================================ */
@@ -629,18 +640,18 @@ function showMatches() {
   for (var i = 0; i < allMatches.length; i++) {
     var m = allMatches[i];
     var details = [];
-    if (m.order) details.push("Order: " + m.order);
-    if (m.cargo) details.push("Cargo: " + m.cargo);
-    if (m.container) details.push("Ctr: " + m.container);
-    if (m.sender) details.push(m.sender);
-    if (m.warehouse) details.push(m.warehouse);
+    if (m.order) details.push("Order: " + esc(m.order));
+    if (m.cargo) details.push("Cargo: " + esc(m.cargo));
+    if (m.container) details.push("Ctr: " + esc(m.container));
+    if (m.sender) details.push(esc(m.sender));
+    if (m.warehouse) details.push(esc(m.warehouse));
 
     h += '<div class="match-item" onclick="toggleMatch(' + i + ',this)">' +
       '<input type="checkbox" class="match-cb" id="cb' + i + '" data-idx="' + i + '">' +
       '<div class="match-info">' +
-        '<div class="match-sample">' + m.sampleId + '</div>' +
-        '<div class="match-detail">' + details.join(' · ') + '</div>' +
-        (m.description ? '<div class="match-detail">' + m.description + '</div>' : '') +
+        '<div class="match-sample">' + esc(m.sampleId) + '</div>' +
+        '<div class="match-detail">' + details.join(' &middot; ') + '</div>' +
+        (m.description ? '<div class="match-detail">' + esc(m.description) + '</div>' : '') +
         (m.hasPhotos ? '<div class="match-photos">📷 Has photos</div>' : '') +
       '</div></div>';
   }
@@ -798,17 +809,21 @@ function loadExistingPhotos(sampleId) {
 
       if (r.folderUrl) {
         var link = document.getElementById("folderLink");
-        link.href = r.folderUrl;
+        link.href = safeUrl(r.folderUrl);
         link.style.display = "inline";
       }
 
       var h = "";
       for (var i = 0; i < r.photos.length; i++) {
         var p = r.photos[i];
+        var safeThumbnail = safeUrl(p.thumbnail);
+        var safePhotoUrl = safeUrl(p.url);
+        var safeId = esc(p.id);
+        var safeSample = esc(sampleId);
         h += '<div class="photo-thumb">' +
-          '<img src="' + p.thumbnail + '" onclick="window.open(\\'' + p.url + '\\',\\'_blank\\')" title="' + p.name + '">' +
-          '<button class="delete-btn" onclick="deletePhoto(\\'' + p.id + '\\',\\'' + sampleId + '\\')" title="Delete">✕</button>' +
-          (p.date ? '<div class="photo-date">' + p.date + '</div>' : '') +
+          '<img src="' + safeThumbnail + '" onclick="window.open(\\'' + safePhotoUrl.replace(/'/g, "\\\\'") + '\\',\\'_blank\\')" title="' + esc(p.name) + '">' +
+          '<button class="delete-btn" onclick="deletePhoto(\\'' + safeId.replace(/'/g, "\\\\'") + '\\',\\'' + safeSample.replace(/'/g, "\\\\'") + '\\')" title="Delete">✕</button>' +
+          (p.date ? '<div class="photo-date">' + esc(p.date) + '</div>' : '') +
           '</div>';
       }
       document.getElementById("photoGrid").innerHTML = h;
@@ -863,4 +878,3 @@ document.getElementById("queryBox").focus();
 </script>
 </body>
 </html>`;
-}

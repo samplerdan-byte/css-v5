@@ -39,11 +39,13 @@ function exportTodaysOrders() {
     return;
   }
 
-  let csvContent = headers.map(escapeCSVField).join(',') + '\n';
-  todaysData.forEach(row => {
+  // V5: perf — Array.join instead of string concat in loop (O(n²) alloc → O(n))
+  var csvLines = [headers.map(escapeCSVField).join(',')];
+  todaysData.forEach(function(row) {
     var safeRow = row.map(function(v) { return String(v || '').trim(); });
-    csvContent += safeRow.map(escapeCSVField).join(',') + '\n';
+    csvLines.push(safeRow.map(escapeCSVField).join(','));
   });
+  var csvContent = csvLines.join('\n') + '\n';
 
   const dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const fileName = 'CSS_Orders_' + dateStr + '.csv';
@@ -80,11 +82,13 @@ function exportAllOrders() {
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   const data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
 
-  let csvContent = headers.map(escapeCSVField).join(',') + '\n';
-  data.forEach(row => {
+  // V5: perf — Array.join instead of string concat in loop (O(n²) alloc → O(n))
+  var csvLines = [headers.map(escapeCSVField).join(',')];
+  data.forEach(function(row) {
     var safeRow = row.map(function(v) { return String(v || '').trim(); });
-    csvContent += safeRow.map(escapeCSVField).join(',') + '\n';
+    csvLines.push(safeRow.map(escapeCSVField).join(','));
   });
+  var csvContent = csvLines.join('\n') + '\n';
 
   const dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmmss');
   const fileName = 'CSS_All_Orders_' + dateStr + '.csv';
@@ -125,31 +129,34 @@ function exportForSQL() {
   function safeCol(name) { return col[name] !== undefined ? col[name] : -1; }
   function safeVal(row, name) { var idx = safeCol(name); return idx >= 0 ? row[idx] : ''; }
 
-  let sqlStatements = '-- CSS Orders Export\n-- Generated: ' + new Date().toISOString() + '\n\n';
-  sqlStatements += 'CREATE TABLE IF NOT EXISTS css_orders (\n';
-  sqlStatements += '  id INT AUTO_INCREMENT PRIMARY KEY,\n';
-  sqlStatements += '  timestamp DATETIME,\n';
-  sqlStatements += '  cs_order_num VARCHAR(20),\n';
-  sqlStatements += '  cs_sample_num VARCHAR(25),\n';
-  sqlStatements += '  sender VARCHAR(100),\n';
-  sqlStatements += '  receiver VARCHAR(200),\n';
-  sqlStatements += '  warehouse VARCHAR(100),\n';
-  sqlStatements += '  description VARCHAR(200),\n';
-  sqlStatements += '  sample_order_num VARCHAR(50),\n';
-  sqlStatements += '  cargo VARCHAR(20),\n';
-  sqlStatements += '  mark VARCHAR(30),\n';
-  sqlStatements += '  container VARCHAR(20),\n';
-  sqlStatements += '  reference VARCHAR(50),\n';
-  sqlStatements += '  bag_count VARCHAR(20),\n';
-  sqlStatements += '  weight VARCHAR(30),\n';
-  sqlStatements += '  sample_weight VARCHAR(20),\n';
-  sqlStatements += '  status VARCHAR(20),\n';
-  sqlStatements += '  tracking_number VARCHAR(50),\n';
-  sqlStatements += '  shipped_date DATETIME\n';
-  sqlStatements += ');\n\n';
+  // V5: perf — Array.join instead of string concat in loop (O(n²) alloc → O(n))
+  var sqlParts = [
+    '-- CSS Orders Export\n-- Generated: ' + new Date().toISOString() + '\n',
+    'CREATE TABLE IF NOT EXISTS css_orders (\n' +
+    '  id INT AUTO_INCREMENT PRIMARY KEY,\n' +
+    '  timestamp DATETIME,\n' +
+    '  cs_order_num VARCHAR(20),\n' +
+    '  cs_sample_num VARCHAR(25),\n' +
+    '  sender VARCHAR(100),\n' +
+    '  receiver VARCHAR(200),\n' +
+    '  warehouse VARCHAR(100),\n' +
+    '  description VARCHAR(200),\n' +
+    '  sample_order_num VARCHAR(50),\n' +
+    '  cargo VARCHAR(20),\n' +
+    '  mark VARCHAR(30),\n' +
+    '  container VARCHAR(20),\n' +
+    '  reference VARCHAR(50),\n' +
+    '  bag_count VARCHAR(20),\n' +
+    '  weight VARCHAR(30),\n' +
+    '  sample_weight VARCHAR(20),\n' +
+    '  status VARCHAR(20),\n' +
+    '  tracking_number VARCHAR(50),\n' +
+    '  shipped_date DATETIME\n' +
+    ');\n'
+  ];
 
-  data.forEach(row => {
-    const values = [
+  data.forEach(function(row) {
+    var values = [
       typeof formatDateForSQL === 'function' ? formatDateForSQL(safeVal(row, 'Timestamp')) : String(safeVal(row, 'Timestamp') || '').trim(),
       String(safeVal(row, 'CS Order #') || '').trim(),
       String(safeVal(row, 'CS Sample #') || '').trim(),
@@ -170,14 +177,15 @@ function exportForSQL() {
       typeof formatDateForSQL === 'function' ? formatDateForSQL(safeVal(row, 'Shipped Date')) : String(safeVal(row, 'Shipped Date') || '').trim()
     ];
 
-    const escapedValues = values.map(v => {
+    var escapedValues = values.map(function(v) {
       if (v === null || v === undefined || v === '') return 'NULL';
       return "'" + String(v || '').replace(/'/g, "''") + "'";
     });
 
-    sqlStatements += 'INSERT INTO css_orders (timestamp, cs_order_num, cs_sample_num, sender, receiver, warehouse, description, sample_order_num, cargo, mark, container, reference, bag_count, weight, sample_weight, status, tracking_number, shipped_date) VALUES (' + escapedValues.join(', ') + ');\n';
+    sqlParts.push('INSERT INTO css_orders (timestamp, cs_order_num, cs_sample_num, sender, receiver, warehouse, description, sample_order_num, cargo, mark, container, reference, bag_count, weight, sample_weight, status, tracking_number, shipped_date) VALUES (' + escapedValues.join(', ') + ');');
   });
 
+  var sqlStatements = sqlParts.join('\n') + '\n';
   const dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const fileName = 'CSS_Orders_SQL_' + dateStr + '.sql';
 

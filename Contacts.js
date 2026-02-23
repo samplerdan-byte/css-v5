@@ -316,20 +316,21 @@ function saveNewContact(type, contactData) {
       }
     }
 
-    // Normalize all contact data before storage
+    // Normalize + sanitize all contact data before storage (formula injection protection)
     var normalizeField = function(s) { return String(s || '').trim().replace(/\s+/g, ' '); };
+    var safeField = function(s) { return _sanitizeForSheet(normalizeField(s)); };
 
     sheet.appendRow([
-      type,
-      normalizeField(company),
-      normalizeField(contactData.attention),
-      normalizeField(contactData.address),
-      normalizeField(contactData.city),
-      normalizeField(contactData.state),
-      normalizeField(contactData.zip),
-      normalizeField(contactData.phone),
-      normalizeField(contactData.email),
-      normalizeField(contactData.notes)
+      _sanitizeForSheet(type),
+      safeField(company),
+      safeField(contactData.attention),
+      safeField(contactData.address),
+      safeField(contactData.city),
+      safeField(contactData.state),
+      safeField(contactData.zip),
+      safeField(contactData.phone),
+      safeField(contactData.email),
+      safeField(contactData.notes)
     ]);
 
     return { success: true, message: company + ' saved as ' + type };

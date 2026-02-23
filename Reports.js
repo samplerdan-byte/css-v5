@@ -343,7 +343,7 @@ function updateFieldReportCell(rowNumber, columnName, newValue) {
   if (colIdx === undefined) return { success: false, message: 'Column "' + columnName + '" not found in sheet.' };
 
   try {
-    sheet.getRange(rowNumber, colIdx + 1).setValue(newValue);
+    sheet.getRange(rowNumber, colIdx + 1).setValue(_sanitizeForSheet(newValue));
     return { success: true, message: '✅ Updated ' + columnName };
   } catch (e) {
     return { success: false, message: '❌ Error: ' + e.message };

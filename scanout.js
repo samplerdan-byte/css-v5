@@ -145,12 +145,12 @@ function _findRowBySample(sheet, sampleId) {
   var col = _getColumnMap(sheet);
   var sampleIdx = col['CS Sample #'];
   if (sampleIdx === undefined) return -1;
-  
+
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return -1;
-  
+
   var samples = sheet.getRange(2, sampleIdx + 1, lastRow - 1, 1).getValues();
-  
+
   for (var i = 0; i < samples.length; i++) {
     if (String(samples[i][0]).trim() === String(sampleId).trim()) {
       return i + 2;
@@ -204,9 +204,12 @@ function scanOutShip(row, cols, trackingNum) {
     if (cols.tracking >= 0) {
       var link = getTrackingUrl(trackingNum);
       if (link) {
-        sheet.getRange(actualRow, cols.tracking + 1).setFormula('=HYPERLINK("' + link + '","' + trackingNum + '")');
+        // Sanitize tracking number and URL for safe formula embedding (prevent quote-breaking injection)
+        var safeLink = _sanitizeForFormula(link);
+        var safeTrack = _sanitizeForFormula(trackingNum);
+        sheet.getRange(actualRow, cols.tracking + 1).setFormula('=HYPERLINK("' + safeLink + '","' + safeTrack + '")');
       } else {
-        sheet.getRange(actualRow, cols.tracking + 1).setValue(trackingNum);
+        sheet.getRange(actualRow, cols.tracking + 1).setValue(_sanitizeForSheet(trackingNum));
       }
     }
 
@@ -240,7 +243,7 @@ function scanOutShipBatch(items, cols) {
     if (lastRow < 2 || sampleIdx === undefined) {
       return { success: false, message: 'No data or sample column missing' };
     }
-    
+
     // Build sample-to-row lookup from CURRENT sheet state
     var sampleData = sheet.getRange(2, sampleIdx + 1, lastRow - 1, 1).getValues();
     var sampleToRow = {};
@@ -248,7 +251,7 @@ function scanOutShipBatch(items, cols) {
       var sid = String(sampleData[s][0]).trim();
       if (sid) sampleToRow[sid] = s + 2;
     }
-    
+
     var now = new Date();
     var results = [];
 
@@ -291,9 +294,12 @@ function scanOutShipBatch(items, cols) {
         if (cols.tracking >= 0) {
           var link = getTrackingUrl(trackingNum);
           if (link) {
-            trackingUpdates.push({ row: actualRow, col: cols.tracking + 1, formula: '=HYPERLINK("' + link + '","' + trackingNum + '")' });
+            // Sanitize tracking number and URL for safe formula embedding (prevent quote-breaking injection)
+            var safeLink = _sanitizeForFormula(link);
+            var safeTrack = _sanitizeForFormula(trackingNum);
+            trackingUpdates.push({ row: actualRow, col: cols.tracking + 1, formula: '=HYPERLINK("' + safeLink + '","' + safeTrack + '")' });
           } else {
-            trackingUpdates.push({ row: actualRow, col: cols.tracking + 1, value: trackingNum });
+            trackingUpdates.push({ row: actualRow, col: cols.tracking + 1, value: _sanitizeForSheet(trackingNum) });
           }
         }
 
@@ -456,7 +462,7 @@ function getScanOutHTML() {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; padding: 10px; background: #f5f5f5; position: relative; }
     h2 { text-align: center; color: #2c5f2d; margin-bottom: 6px; font-size: 18px; }
-    
+
     /* MODE TABS */
     .mode-tabs { display: flex; margin-bottom: 8px; border-radius: 8px; overflow: hidden; border: 2px solid #2c5f2d; }
     .mode-tab {
@@ -465,7 +471,7 @@ function getScanOutHTML() {
     }
     .mode-tab.active { background: #2c5f2d; color: #fff; }
     .mode-tab:not(.active):hover { background: #e8f5e9; }
-    
+
     /* INPUT */
     .input-row { display: flex; gap: 6px; margin-bottom: 8px; }
     .input-row input {
@@ -478,7 +484,7 @@ function getScanOutHTML() {
       padding: 14px 18px; font-size: 18px; font-weight: bold;
       background: #28a745; color: #fff; border: none; border-radius: 10px; cursor: pointer; min-width: 60px;
     }
-    
+
     /* STATUS BAR */
     #status {
       padding: 10px; border-radius: 8px; text-align: center;
@@ -491,7 +497,7 @@ function getScanOutHTML() {
     .error { background: #f8d7da; color: #721c24; }
     .tracking-ready { background: #e3f2fd; color: #1565c0; }
     .wrong-mode { background: #fff3cd; color: #856404; border: 2px solid #ffc107; }
-    
+
     /* QUEUE */
     #queueSection { background: #fff; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 8px; max-height: 320px; overflow-y: auto; }
     #queueHeader {
@@ -523,7 +529,7 @@ function getScanOutHTML() {
     .q-status.fail { background: #ffcdd2; color: #c62828; }
     .q-remove { background: none; border: none; color: #ccc; cursor: pointer; font-size: 14px; padding: 0 2px; margin-left: 4px; }
     .q-remove:hover { color: #f44336; }
-    
+
     /* ACTION BUTTONS */
     .action-row { display: flex; gap: 6px; margin-bottom: 8px; }
     .action-btn {
@@ -535,14 +541,14 @@ function getScanOutHTML() {
     .btn-clear:hover:not(:disabled) { background: #eee; }
     .btn-ship { background: #2c5f2d; color: #fff; }
     .btn-ship:hover:not(:disabled) { background: #1e4620; }
-    
+
     /* COUNTER */
     #counter {
       text-align: center; padding: 6px; background: #2c5f2d;
       color: #fff; border-radius: 8px; font-size: 12px; margin-bottom: 8px;
     }
     #counter span { font-size: 16px; font-weight: bold; }
-    
+
     /* CARRIER INFO */
     #carrierInfo {
       display: none; background: #fff; border-radius: 8px; padding: 8px;
@@ -553,7 +559,7 @@ function getScanOutHTML() {
     .carrier-label { font-size: 9px; color: #666; text-transform: uppercase; font-weight: bold; }
     .carrier-acct { font-size: 14px; font-weight: bold; font-family: monospace; color: #1e3c72; letter-spacing: 1px; }
     .carrier-preferred { background: #1976d2; color: #fff; font-size: 8px; padding: 1px 5px; border-radius: 8px; font-weight: bold; }
-    
+
     /* POPUP */
     #popupOverlay {
       display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -572,7 +578,7 @@ function getScanOutHTML() {
     .popup-btn-secondary { background: #6c757d; color: #fff; }
     .popup-btn-move { background: #17a2b8; color: #fff; }
     .popup-btn-warn { background: #ffc107; color: #333; }
-    
+
     /* MISC */
     #refreshBtn {
       position: absolute; top: 8px; right: 10px; background: none; border: none;
@@ -664,6 +670,9 @@ var shippedCount = 0;
 var inflight = 0;       /* server calls in progress */
 
 function dbg(msg) { document.getElementById("debugLog").textContent = msg; }
+
+/* HTML escape helper — prevents XSS when building innerHTML from data */
+function esc(s) { var d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
 
 /* ============================================================
    CROSS-MODE VALIDATION
@@ -874,7 +883,7 @@ function addOneSample(id) {
     if (inLive) {
       showPopup("stuck", "Stuck Sample!",
         id + " is marked shipped but still in Live Orders.\\n\\n" + (entry.t ? "Has tracking: " + entry.t : "No tracking on file"),
-        '<button class="popup-btn popup-btn-move" onclick="forceMove(\\'' + id + '\\')">Move to Completed</button>' +
+        '<button class="popup-btn popup-btn-move" onclick="forceMove(\\'' + esc(id) + '\\')">Move to Completed</button>' +
         '<button class="popup-btn popup-btn-secondary" onclick="closePopup()">Cancel</button>'
       );
     } else {
@@ -1079,9 +1088,9 @@ function renderQueue() {
 
     h += '<div class="' + cls + '">' +
       '<span class="q-num">' + (i+1) + '.</span>' +
-      '<span class="q-sample">' + q.id + '</span>' +
-      '<span class="q-details">' + (q.entry.d || "") + '</span>';
-    if (q.tracking) h += '<span class="q-tracking">' + q.tracking.slice(-6) + '</span>';
+      '<span class="q-sample">' + esc(q.id) + '</span>' +
+      '<span class="q-details">' + esc(q.entry.d || "") + '</span>';
+    if (q.tracking) h += '<span class="q-tracking">' + esc(q.tracking.slice(-6)) + '</span>';
     h += statusLabel;
     if (q.status === "pending" && mode === 0) {
       h += '<button class="q-remove" onclick="removeFromQueue(' + i + ')" title="Remove">✕</button>';
@@ -1134,13 +1143,13 @@ function showCarrierInfo(carrier) {
   if (carrier.fedex) {
     h += '<div class="carrier-row"><span class="carrier-label">FedEx</span>';
     if (carrier.preferred === "FedEx") h += '<span class="carrier-preferred">★ PREFERRED</span>';
-    h += '</div><div class="carrier-row"><span class="carrier-acct">' + carrier.fedex + '</span></div>';
+    h += '</div><div class="carrier-row"><span class="carrier-acct">' + esc(carrier.fedex) + '</span></div>';
   }
   if (carrier.ups) {
     if (carrier.fedex) h += '<hr style="border:none;border-top:1px solid #eee;margin:3px 0">';
     h += '<div class="carrier-row"><span class="carrier-label">UPS</span>';
     if (carrier.preferred === "UPS") h += '<span class="carrier-preferred">★ PREFERRED</span>';
-    h += '</div><div class="carrier-row"><span class="carrier-acct">' + carrier.ups + '</span></div>';
+    h += '</div><div class="carrier-row"><span class="carrier-acct">' + esc(carrier.ups) + '</span></div>';
   }
   content.innerHTML = h;
   el.style.display = "block";

@@ -913,8 +913,10 @@ function updateLiveOrdersView() {
   var completedRows = [];
 
   if (lastRow >= 2) {
-    var data = mainSheet.getRange(2, 1, lastRow - 1, totalCols).getValues();
-    var formulas = mainSheet.getRange(2, 1, lastRow - 1, totalCols).getFormulas();
+    // V5: perf — cache range object to avoid two getRange() constructions
+    var dataRange = mainSheet.getRange(2, 1, lastRow - 1, totalCols);
+    var data = dataRange.getValues();
+    var formulas = dataRange.getFormulas();
 
     var liveStatuses = [CONFIG.statusValues.RECEIVED, CONFIG.statusValues.SCANNED];
     var completedStatuses = [CONFIG.statusValues.SHIPPED, 'Completed', CONFIG.statusValues.REPORTED, CONFIG.statusValues.ARCHIVED];
@@ -962,8 +964,10 @@ function updateLiveOrdersView() {
   // Read existing Completed rows before clearing — keep any not in All Orders
   var preservedRows = [];
   if (completedSheet.getLastRow() > 1 && sampleIdx !== undefined) {
-    var existingCompleted = completedSheet.getRange(2, 1, completedSheet.getLastRow() - 1, completedSheet.getLastColumn()).getValues();
-    var existingFormulas = completedSheet.getRange(2, 1, completedSheet.getLastRow() - 1, completedSheet.getLastColumn()).getFormulas();
+    // V5: perf — cache range object to avoid two getRange() constructions
+    var completedRange = completedSheet.getRange(2, 1, completedSheet.getLastRow() - 1, completedSheet.getLastColumn());
+    var existingCompleted = completedRange.getValues();
+    var existingFormulas = completedRange.getFormulas();
     for (var ec = 0; ec < existingCompleted.length; ec++) {
       var ecSample = String(existingCompleted[ec][sampleIdx] || '').trim();
       if (ecSample && !newCompletedSamples[ecSample]) {
@@ -1269,7 +1273,35 @@ function processPendingMoves() {
   }
   
   if (shippedSamples.length === 0) return { moved: 0, message: 'No shipped samples to move' };
-  
+
+  // V5: dedup guard — skip samples already in Completed Orders (prevents double-trigger duplicates)
+  var alreadyInCompleted = {};
+  try {
+    if (completedSheet.getLastRow() >= 2) {
+      var _cColMap = _getColumnMap(completedSheet);
+      var _cSampleIdx = _cColMap['CS Sample #'];
+      if (_cSampleIdx !== undefined) {
+        var _cSamples = completedSheet.getRange(2, _cSampleIdx + 1, completedSheet.getLastRow() - 1, 1).getValues();
+        for (var _ci = 0; _ci < _cSamples.length; _ci++) {
+          var _cs = String(_cSamples[_ci][0] || '').trim();
+          if (_cs) alreadyInCompleted[_cs] = true;
+        }
+      }
+    }
+  } catch (_dedupErr) {
+    Logger.log('processPendingMoves: dedup check error (continuing): ' + _dedupErr);
+  }
+  var _dupSkipped = 0;
+  shippedSamples = shippedSamples.filter(function(s) {
+    if (alreadyInCompleted[s.sample]) {
+      _dupSkipped++;
+      if (typeof logWarning === 'function') logWarning('processPendingMoves', 'Skipping duplicate — already in Completed Orders', { sample: s.sample });
+      return false;
+    }
+    return true;
+  });
+  if (shippedSamples.length === 0) return { moved: 0, message: 'No new samples to move (' + _dupSkipped + ' already in Completed Orders)' };
+
   // Batch copy to Completed — update status from Shipped → Completed
   var rowsToAppend = shippedSamples.map(function(s) {
     var row = s.rowData.slice();
@@ -1327,6 +1359,8 @@ function processPendingMoves() {
   
   SpreadsheetApp.flush();
   try { updateLiveOrdersView(); } catch(e) { logError('markSamplesShipped', 'Error updating Live Orders view', { samplesCount: shippedSamples.length, error: e.message }); }
+  // V5: invalidate dashboard cache after data move
+  try { if (typeof invalidateDashboardCache === 'function') invalidateDashboardCache(); } catch(ignore) {}
 
   var remaining = Object.keys(toDelete).length;
   var msg = 'Moved ' + shippedSamples.length + ' samples to Completed Orders';
@@ -1448,6 +1482,9 @@ function archiveOldOrders() {
     completedSheet.deleteRow(rowNum);
   });
   
+  // V5: invalidate dashboard cache after archive
+  try { if (typeof invalidateDashboardCache === 'function') invalidateDashboardCache(); } catch(ignore) {}
+
   ui.alert('Archive Complete!\n\n' +
     'Archived ' + oldRows.length + ' orders to:\n' +
     fileName + '\n\nFile URL: ' + file.getUrl());

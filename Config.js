@@ -75,6 +75,74 @@ const CONFIG = {
 };
 
 // ============================================================
+// SAFE SHEET ACCESS — wraps getSheetByName with null check + logging
+// ============================================================
+function _getConfigSheet(ss, configKey, fallback) {
+  var sheetName = (CONFIG && CONFIG[configKey]) ? CONFIG[configKey] : (fallback || configKey);
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    Logger.log('_getConfigSheet: sheet "' + sheetName + '" not found (configKey: ' + configKey + ')');
+    if (typeof logError === 'function') {
+      logError('_getConfigSheet', 'Sheet not found', { configKey: configKey, sheetName: sheetName });
+    }
+  }
+  return sheet;
+}
+
+// ============================================================
+// INPUT SANITIZATION — formula injection & formula-embed protection
+// ============================================================
+
+/**
+ * Sanitize a value before writing to Google Sheets via setValue/appendRow.
+ * Prevents formula injection (=cmd, +cmd, -cmd, @cmd, tab, CR prefixes)
+ * and strips control characters that could corrupt sheet data.
+ *
+ * @param {*} val - The value to sanitize
+ * @returns {*} Safe value for sheet storage (non-strings pass through unchanged)
+ */
+function _sanitizeForSheet(val) {
+  if (typeof val !== 'string') return val;
+  if (val.length === 0) return val;
+  // Strip control characters except normal whitespace (space, tab in middle, newline)
+  val = val.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  var firstChar = val.charAt(0);
+  if (firstChar === '=' || firstChar === '+' || firstChar === '-' || firstChar === '@' || firstChar === '\t' || firstChar === '\r') {
+    return "'" + val;
+  }
+  return val;
+}
+
+/**
+ * Sanitize a string for safe embedding inside a Google Sheets formula.
+ * Escapes double quotes to prevent breaking out of =HYPERLINK("...","...") etc.
+ * Strips control characters that could corrupt formulas.
+ *
+ * @param {*} val - The value to sanitize
+ * @returns {string} Safe string for formula interpolation
+ */
+function _sanitizeForFormula(val) {
+  if (val === null || val === undefined) return '';
+  return String(val).replace(/[\x00-\x1F\x7F]/g, '').replace(/"/g, '""');
+}
+
+/**
+ * Sanitize a string for safe embedding in Logger.log output.
+ * Strips newlines/carriage returns that could forge log entries.
+ *
+ * @param {*} val - The value to sanitize
+ * @param {number} [maxLen=500] - Maximum length to truncate to
+ * @returns {string} Safe string for logging
+ */
+function _sanitizeForLog(val, maxLen) {
+  if (val === null || val === undefined) return '';
+  var s = String(val).replace(/[\r\n]/g, ' ');
+  maxLen = maxLen || 500;
+  if (s.length > maxLen) s = s.substring(0, maxLen) + '...';
+  return s;
+}
+
+// ============================================================
 // UTILITY FUNCTIONS
 // ============================================================
 function buildSearchQuery() {
