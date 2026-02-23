@@ -2,6 +2,7 @@
 <html>
 <head>
   <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
@@ -161,11 +162,13 @@
     }
 
     function clearHistory() {
+      if (!confirm('Clear all scan history? This cannot be undone.')) return;
       document.getElementById('historyList').innerHTML = '';
       document.getElementById('historySection').style.display = 'none';
       scanCount = 0;
       document.getElementById('count').textContent = '0';
       setStatus('ready', 'Ready — scan a barcode or type a sample number');
+      document.getElementById('barcodeInput').focus();
     }
 
     // Auto-focus on load

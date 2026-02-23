@@ -220,36 +220,56 @@ function scanOutShipBatch(items, cols) {
     
     var now = new Date();
     var results = [];
-    
+
+    // Collect all updates, then batch write once (instead of per-item setValue calls)
+    var statusUpdates = [];
+    var shipDateUpdates = [];
+    var trackingUpdates = [];
+
     for (var i = 0; i < items.length; i++) {
       try {
         var sampleId = String(items[i].id).trim();
         var trackingNum = String(items[i].tracking).trim();
-        
+
         var actualRow = sampleToRow[sampleId];
         if (!actualRow) {
           results.push({ id: items[i].id, success: false, message: sampleId + ' not found' });
           continue;
         }
-        
-        if (cols.status >= 0)   sheet.getRange(actualRow, cols.status + 1).setValue('Shipped');
-        if (cols.shipDate >= 0) sheet.getRange(actualRow, cols.shipDate + 1).setValue(now);
-        
+
+        if (cols.status >= 0)   statusUpdates.push({ row: actualRow, col: cols.status + 1, value: 'Shipped' });
+        if (cols.shipDate >= 0) shipDateUpdates.push({ row: actualRow, col: cols.shipDate + 1, value: now });
+
         if (cols.tracking >= 0) {
           var link = getTrackingUrl(trackingNum);
           if (link) {
-            sheet.getRange(actualRow, cols.tracking + 1).setFormula('=HYPERLINK("' + link + '","' + trackingNum + '")');
+            trackingUpdates.push({ row: actualRow, col: cols.tracking + 1, formula: '=HYPERLINK("' + link + '","' + trackingNum + '")' });
           } else {
-            sheet.getRange(actualRow, cols.tracking + 1).setValue(trackingNum);
+            trackingUpdates.push({ row: actualRow, col: cols.tracking + 1, value: trackingNum });
           }
         }
-        
+
         results.push({ id: items[i].id, success: true });
       } catch(e) {
         results.push({ id: items[i].id, success: false, message: e.message });
       }
     }
-    
+
+    // Batch write — use RangeList for same-value columns (1 API call instead of N)
+    if (statusUpdates.length > 0) {
+      var statusRanges = statusUpdates.map(function(u) { return sheet.getRange(u.row, u.col).getA1Notation(); });
+      sheet.getRangeList(statusRanges).setValue('Shipped');
+    }
+    if (shipDateUpdates.length > 0) {
+      var dateRanges = shipDateUpdates.map(function(u) { return sheet.getRange(u.row, u.col).getA1Notation(); });
+      sheet.getRangeList(dateRanges).setValue(now);
+    }
+    // Tracking needs individual writes (formulas differ per row)
+    trackingUpdates.forEach(function(u) {
+      if (u.formula) sheet.getRange(u.row, u.col).setFormula(u.formula);
+      else sheet.getRange(u.row, u.col).setValue(u.value);
+    });
+
     SpreadsheetApp.flush();
     try { updateLiveOrdersView(); } catch(ignore) {}
     return { success: true, results: results, shipped: results.filter(function(r) { return r.success; }).length };

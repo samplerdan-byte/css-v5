@@ -551,6 +551,7 @@
 
     function startScanner() {
       if (isScanning) return;
+      setStatusBar('scanStatus', 'working', '⏳ Initializing camera...');
 
       // FIX: Pass formatsToSupport in the constructor, NOT in start() config
       html5QrCode = new Html5Qrcode("qr-reader", {
@@ -702,6 +703,7 @@
     }
 
     function clearScanHistory() {
+      if (!confirm('Clear all scan history? This cannot be undone.')) return;
       scanCount = 0;
       document.getElementById('scanCount').textContent = '0';
       document.getElementById('scanHistory').innerHTML = '';

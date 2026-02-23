@@ -2,6 +2,7 @@
 <html>
 <head>
   <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; padding: 12px; background: #f9f9f9; font-size: 13px; }
@@ -195,7 +196,7 @@
   <div class="form-section">
     <h3>☕ Sample Details <span style="font-weight:normal;color:#888;font-size:10px;">— tweak fields between submits</span></h3>
     <div class="row">
-      <div><label>Container</label><input type="text" id="sContainer" placeholder="ABCD1234567"></div>
+      <div><label>Container</label><input type="text" id="sContainer" placeholder="ABCD1234567" style="text-transform:uppercase;"></div>
       <div><label>Mark</label><input type="text" id="sMark" placeholder="003/0123/456"></div>
     </div>
     <div class="row">
@@ -380,13 +381,19 @@ function getContactData(dir) {
 // ── Submit one sample ──
 function submitSample() {
   var btn = document.getElementById('submitBtn');
-  btn.disabled = true; btn.textContent = 'Adding...';
   clearStatus();
 
   var sender = getContactData('from');
   var receiver = getContactData('to');
+
+  // Client-side validation before server round-trip
+  if (!sender.company) { showStatus('msg-error', 'Shipper company is required.'); return; }
+  if (!receiver.company) { showStatus('msg-error', 'Receiver company is required.'); return; }
+  if (!document.getElementById('warehouse').value) { showStatus('msg-error', 'Warehouse is required.'); return; }
+
+  btn.disabled = true; btn.textContent = 'Adding...';
   var sample = {
-    container: document.getElementById('sContainer').value.trim(),
+    container: document.getElementById('sContainer').value.trim().toUpperCase(),
     marks: document.getElementById('sMark').value.trim(),
     cargo: document.getElementById('sCargo').value.trim(),
     bags: document.getElementById('sBags').value.trim(),

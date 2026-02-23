@@ -335,7 +335,7 @@
         var statusLabel = o.status || 'Unknown';
         if (statusLower === 'scanned') statusLabel = 'In Progress';
 
-        html += '<div class="order-card status-' + statusLower + '" onclick="toggleCard(this)" data-idx="' + idx + '">';
+        html += '<div class="order-card status-' + statusLower + '" role="button" tabindex="0" onclick="toggleCard(this)" onkeypress="if(event.key===\'Enter\')toggleCard(this)" data-idx="' + idx + '">';
 
         // Top row
         html += '<div class="order-top">';

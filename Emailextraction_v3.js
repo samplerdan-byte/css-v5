@@ -426,6 +426,7 @@ function processPDFsFromGmail() {
   var extractTime = 0;
   var writeTime = 0;
   var attachTime = 0;
+  var parserMetrics = {}; // Track success/failure per client
 
   threads.forEach(function(thread, threadIndex) {
     var tThread = new Date();
@@ -524,6 +525,15 @@ function processPDFsFromGmail() {
       Logger.log('Extraction error: ' + e);
     }
     extractTime += (new Date() - tExtract);
+
+    // Track parser metrics per client
+    var clientName = (extractedRecords.length > 0 && extractedRecords[0].sender) ? extractedRecords[0].sender : 'Unknown';
+    if (!parserMetrics[clientName]) parserMetrics[clientName] = { attempts: 0, success: 0, orders: 0 };
+    parserMetrics[clientName].attempts++;
+    if (extractedRecords.length > 0) {
+      parserMetrics[clientName].success++;
+      parserMetrics[clientName].orders += extractedRecords.length;
+    }
 
     if (extractedRecords.length === 0) {
       Logger.log('No records extracted - skipping');
@@ -628,6 +638,15 @@ function processPDFsFromGmail() {
   Logger.log('=== PROCESSING COMPLETE ===');
   Logger.log('Total records added: ' + processedCount);
   Logger.log('PDF: ' + (pdfTime / 1000).toFixed(1) + 's | Extract: ' + (extractTime / 1000).toFixed(1) + 's | Write: ' + (writeTime / 1000).toFixed(1) + 's | Attach: ' + (attachTime / 1000).toFixed(1) + 's | Total: ' + elapsed + 's');
+
+  // Log parser metrics per client
+  Logger.log('=== PARSER METRICS ===');
+  for (var pm in parserMetrics) {
+    var m = parserMetrics[pm];
+    var rate = m.attempts > 0 ? (m.success / m.attempts * 100).toFixed(0) : '0';
+    Logger.log(pm + ': ' + m.attempts + ' emails, ' + rate + '% success, ' + m.orders + ' orders');
+  }
+
   SpreadsheetApp.getUi().alert('Processed ' + processedCount + ' records from ' + threads.length + ' emails in ' + elapsed + 's');
 }
 
@@ -841,19 +860,37 @@ function identifyClient(senderEmail, allText) {
 
 function extractByClientType(client, emailBody, pdfText, subject) {
   if (client.useCustomParser) {
-    if (client.name === 'Serengeti Trading Company')        return extractSerengetiOrders(emailBody, pdfText, subject);
-    if (client.name === 'Atlantic (USA), LLC')              return extractAtlanticOrders(emailBody, pdfText, subject);
-    if (client.name === 'Ally Coffee Trading S.A.')         return extractAllyOrders(emailBody, pdfText, subject);
-    if (client.name === 'Armenia Coffee Corp')              return extractArmeniaOrders(emailBody, pdfText, subject);
-    if (client.name === 'American Coffee Corporation')      return extractAmcofOrders(emailBody, pdfText, subject);
-    if (client.name === 'Coffee America USA Corp')          return extractCoffeeAmericaOrders(emailBody, pdfText, subject);
-    if (client.name === 'InterAmerican Coffee (NKG)')       return extractInterAmericanOrders(emailBody, pdfText, subject);
-    if (client.name === 'International Coffee Corporation') return extractIccOrders(emailBody, pdfText, subject);
-    if (client.name === 'Osito Coffee')                     return extractOsitoOrders(emailBody, pdfText, subject);
-    if (client.name === 'Rothfos (Neumann Kaffee Gruppe)')  return extractRothfosOrders(emailBody, pdfText, subject);
-    if (client.name === 'Louis Dreyfus Company')            return extractLdcOrders(emailBody, pdfText, subject);
-    if (client.name === 'Sucafina NA')                      return extractSucafinaOrders(emailBody, pdfText, subject);
-    if (client.name === 'The Coffee Source LLC')            return extractCoffeeSourceOrders(emailBody, pdfText, subject);
+    var PARSERS = {
+      'Serengeti Trading Company':        extractSerengetiOrders,
+      'Atlantic (USA), LLC':              extractAtlanticOrders,
+      'Ally Coffee Trading S.A.':         extractAllyOrders,
+      'Armenia Coffee Corp':              extractArmeniaOrders,
+      'American Coffee Corporation':      extractAmcofOrders,
+      'Coffee America USA Corp':          extractCoffeeAmericaOrders,
+      'InterAmerican Coffee (NKG)':       extractInterAmericanOrders,
+      'International Coffee Corporation': extractIccOrders,
+      'Osito Coffee':                     extractOsitoOrders,
+      'Rothfos (Neumann Kaffee Gruppe)':  extractRothfosOrders,
+      'Louis Dreyfus Company':            extractLdcOrders,
+      'Sucafina NA':                      extractSucafinaOrders,
+      'The Coffee Source LLC':            extractCoffeeSourceOrders
+    };
+
+    var parserFn = PARSERS[client.name];
+    if (parserFn) {
+      try {
+        return parserFn(emailBody, pdfText, subject);
+      } catch (e) {
+        logError('extractByClientType', 'Parser crashed for ' + client.name + ': ' + e.message, {
+          client: client.name,
+          subject: subject,
+          stack: e.stack,
+          emailLength: (emailBody || '').length,
+          pdfLength: (pdfText || '').length
+        });
+        return []; // Fail gracefully — don't kill the batch
+      }
+    }
 
     Logger.log('useCustomParser=true but no parser matched for: ' + client.name);
   }
