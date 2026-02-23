@@ -33,7 +33,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Olam Americas', 'ofi.com'],
     defaultShipping: 'FedEx Priority',
     defaultSampleSize: '2 lb',
-    warehouse: 'RPM'
+    warehouse: 'RPM_AVENEL'
   },
   'coffeeamerica': {
     name: 'Coffee America USA Corp',
@@ -42,7 +42,7 @@ var KNOWN_CLIENTS = {
     defaultShipping: 'FedEx Priority',
     defaultSampleSize: '2 lb',
     fedexAccount: '6701-4695-2',
-    warehouse: 'RPM',
+    warehouse: 'RPM_AVENEL',
     useCustomParser: true
   },
   'ally': {
@@ -51,7 +51,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Ally Coffee', 'ALLY SAMPLING ORDER', 'Ally Brazilian'],
     defaultShipping: 'FedEx Standard Overnight',
     defaultSampleSize: '2 lb',
-    warehouse: 'RPM',
+    warehouse: 'RPM_AVENEL',
     useCustomParser: true
   },
   'rothfos': {
@@ -60,7 +60,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Rothfos', 'Neumann Gruppe USA Inc. dba Rothfos'],
     defaultShipping: 'FedEx 2 Day',
     defaultSampleSize: '2 lb',
-    warehouse: 'Continental',
+    warehouse: 'CONTINENTAL_200',
     useCustomParser: true
   },
   'interamerican': {
@@ -69,7 +69,7 @@ var KNOWN_CLIENTS = {
     keywords: ['InterAmerican Coffee', 'Neumann Gruppe USA Inc. dba InterAmerican'],
     defaultShipping: 'FedEx 2 Day',
     defaultSampleSize: '2 lb',
-    warehouse: 'Continental',
+    warehouse: 'CONTINENTAL_200',
     useCustomParser: true
   },
   'atlantic_usa': {
@@ -78,7 +78,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Atlantic (USA), LLC', 'LETTER OF ENTRY', 'LOE'],
     defaultShipping: 'UPS Ground',
     defaultSampleSize: '2 lb',
-    warehouse: 'RPM',
+    warehouse: 'RPM_AVENEL',
     requiresSamplingInstructions: true,
     useCustomParser: true
   },
@@ -88,7 +88,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Atlantic Specialty Coffee', 'ASCILAB', 'ascitraffic'],
     defaultShipping: 'UPS 2 Day',
     defaultSampleSize: '2 lb',
-    warehouse: 'Continental'
+    warehouse: 'CONTINENTAL_200'
   },
   'excelco': {
     name: 'Excelco Trading LP',
@@ -96,7 +96,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Excelco', 'Sample Allowance', 'Sopex'],
     defaultShipping: 'UPS 2nd Day',
     defaultSampleSize: '2 lb',
-    warehouse: 'RPM',
+    warehouse: 'RPM_AVENEL',
     isBroker: true,
     brokeredClients: ['equalexchange', 'linglebrothers']
   },
@@ -107,7 +107,7 @@ var KNOWN_CLIENTS = {
     broker: 'excelco',
     defaultShipping: 'UPS 2nd Day',
     defaultSampleSize: '2 lb',
-    warehouse: 'Continental'
+    warehouse: 'CONTINENTAL_200'
   },
   'linglebrothers': {
     name: 'Lingle Brothers Coffee',
@@ -115,7 +115,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Lingle Brothers', 'LINGLE BROTHERS'],
     defaultShipping: 'FedEx',
     defaultSampleSize: '2 lb',
-    warehouse: 'Continental'
+    warehouse: 'CONTINENTAL_200'
   },
   'covoya': {
     name: 'Covoya Specialty Coffee',
@@ -123,7 +123,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Covoya', 'ARRIVAL SAMPLE REQUEST'],
     defaultShipping: 'FedEx',
     defaultSampleSize: '2 lb',
-    warehouse: 'Continental'
+    warehouse: 'CONTINENTAL_200'
   },
   'osito': {
     name: 'Osito Coffee',
@@ -132,7 +132,7 @@ var KNOWN_CLIENTS = {
     defaultShipping: 'FedEx Ground',
     defaultSampleSize: '500g',
     fedexAccount: '625178762',
-    warehouse: 'Continental',
+    warehouse: 'CONTINENTAL_200',
     useCustomParser: true
   },
   'paragon': {
@@ -151,7 +151,7 @@ var KNOWN_CLIENTS = {
     defaultShipping: 'FedEx',
     defaultSampleSize: '2 lb',
     fedexAccount: '9462-6555-1',
-    warehouse: 'Continental',
+    warehouse: 'CONTINENTAL_200',
     useCustomParser: true
   },
   'listbeisler': {
@@ -161,7 +161,7 @@ var KNOWN_CLIENTS = {
     defaultShipping: 'FedEx 2 Day',
     defaultSampleSize: '2 lb',
     fedexAccount: '763817172',
-    warehouse: 'Continental'
+    warehouse: 'CONTINENTAL_200'
   },
   'sucafina': {
     name: 'Sucafina NA',
@@ -169,7 +169,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Sucafina', 'SUCAFINA', 'Tastify'],
     defaultShipping: 'FedEx',
     defaultSampleSize: '2 lb',
-    warehouse: 'Continental',
+    warehouse: 'CONTINENTAL_200',
     useCustomParser: true
   },
   'serengeti': {
@@ -178,7 +178,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Serengeti Trading', 'SERENGETI', 'Serengeti -'],
     defaultShipping: 'FedEx 2 Day',
     defaultSampleSize: '4 lb',
-    warehouse: 'Continental',
+    warehouse: 'CONTINENTAL_200',
     defaultReceiver: {
       name: 'Serengeti Trading Company',
       address: '19100 Hamilton Pool Rd',
@@ -196,7 +196,7 @@ var KNOWN_CLIENTS = {
     defaultShipping: 'FedEx Standard Overnight',
     defaultSampleSize: '2 lb',
     fedexAccount: '461992226',
-    warehouse: 'RPM',
+    warehouse: 'RPM_AVENEL',
     defaultReceiver: {
       name: 'International Coffee Corporation',
       address: '734 Martin Behrman Ave',
@@ -213,7 +213,7 @@ var KNOWN_CLIENTS = {
     defaultShipping: 'FedEx 2 Day',
     defaultSampleSize: '2 lb',
     fedexAccount: '461992226',
-    warehouse: 'RPM',
+    warehouse: 'RPM_AVENEL',
     isBroker: true,
     brokeredClients: ['icc']
   },
@@ -223,7 +223,7 @@ var KNOWN_CLIENTS = {
     keywords: ['American Coffee Corp', 'American Coffee Corporation', 'AMCOF'],
     defaultShipping: 'FedEx',
     defaultSampleSize: '2 lb',
-    warehouse: 'RPM',
+    warehouse: 'RPM_AVENEL',
     useCustomParser: true
   },
   'armenia': {
@@ -232,7 +232,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Armenia Coffee', 'Armenia reference'],
     defaultShipping: 'UPS Ground',
     defaultSampleSize: '2 lb',
-    warehouse: 'Continental',
+    warehouse: 'CONTINENTAL_200',
     useCustomParser: true
   },
   'ldc': {
@@ -241,7 +241,7 @@ var KNOWN_CLIENTS = {
     keywords: ['Louis Dreyfus', 'LDC'],
     defaultShipping: 'FedEx Standard Overnight',
     defaultSampleSize: '2 lb',
-    warehouse: 'RPM',
+    warehouse: 'RPM_AVENEL',
     useCustomParser: true
   }
 };
@@ -298,25 +298,65 @@ function getCountryFromICOMark(mark) {
 // ============================================================================
 
 var WAREHOUSES = {
-  'RPM': {
-    name: 'RPM Warehouse',
-    addresses: ['1500 Rahway', '2900 Woodbridge', 'Avenel', 'Edison', 'RPM'],
+  'RPM_AVENEL': {
+    name: 'RPM AVENEL',
+    region: 'CSS NJ',
+    addresses: ['1500 Rahway', 'Avenel', 'RPM Avenel'],
     fullAddress: '1500 Rahway Avenue, Avenel, NJ 07001'
   },
-  'Continental': {
-    name: 'Continental Terminals (CTI)',
+  'RPM_WOODBRIDGE': {
+    name: 'RPM WOODBRIDGE',
+    region: 'CSS NJ',
+    addresses: ['2900 Woodbridge', 'Woodbridge'],
+    fullAddress: '2900 Woodbridge Avenue, Edison, NJ 08837'
+  },
+  'RPM_TALMAGE': {
+    name: 'RPM TALMAGE',
+    region: 'CSS NJ',
+    addresses: ['Talmage'],
+    fullAddress: '44 Talmadge Road, Edison, NJ 08817'
+  },
+  'RPM_UNASSIGNED': {
+    name: 'RPM UNASSIGNED',
+    region: 'CSS NJ',
+    addresses: [],
+    fullAddress: ''
+  },
+  'CONTINENTAL_200': {
+    name: 'CONTINENTAL 200',
+    region: 'CSS NJ',
     addresses: ['200 Middlesex', 'Carteret', 'Continental', 'CTI'],
     fullAddress: '200 Middlesex Avenue, Carteret, NJ 07008'
   },
+  'CONTINENTAL_300': {
+    name: 'CONTINENTAL 300',
+    region: 'CSS NJ',
+    addresses: ['300 Middlesex', '300 Mac Lane', 'Keasby'],
+    fullAddress: '300 Mac Lane, Keasby, NJ 08832'
+  },
   'Florence': {
     name: 'Florence Warehouse Inc',
-    addresses: ['Florence Warehouse', 'Florence'],
-    fullAddress: ''
+    region: 'CSS NJ',
+    addresses: ['Florence Warehouse', 'Florence', 'Mecca', '580 Marin'],
+    fullAddress: '580 Marin Blvd, Jersey City, NJ 07310'
+  },
+  'Cadeco': {
+    name: 'Cadeco',
+    region: 'CSS HOUSTON',
+    addresses: ['Cadeco', '5610 Clinton'],
+    fullAddress: '5610 Clinton Dr, Houston, TX 77020'
   },
   'Dupuy': {
     name: 'Dupuy Storage',
-    addresses: ['Dupuy Storage', 'Dupuy'],
-    fullAddress: ''
+    region: 'CSS HOUSTON',
+    addresses: ['Dupuy Storage', 'Dupuy', '7703 Cannon'],
+    fullAddress: '7703 Cannon St, Houston, TX 77021'
+  },
+  'RPM_NORTHDALE': {
+    name: 'RPM NORTHDALE',
+    region: 'CSS HOUSTON',
+    addresses: ['RPM Northdale', 'Northdale', '6462 Northdale'],
+    fullAddress: '6462 Northdale St, Houston, TX 77087'
   }
 };
 
@@ -1139,16 +1179,22 @@ function extractReferences(text, client) {
 
 function detectWarehouse(text) {
   text = text.toLowerCase();
+  // Continental — try specific address first, then general
+  if (text.indexOf('300 middlesex') >= 0) return 'CONTINENTAL_300';
   if (text.indexOf('continental') >= 0 || text.indexOf(' cti') >= 0 || text.indexOf('\ncti') >= 0 ||
       text.indexOf('cti ') >= 0 || text.indexOf('200 middlesex') >= 0 || text.indexOf('carteret') >= 0) {
-    return 'Continental';
+    return 'CONTINENTAL_200';
   }
-  if (text.indexOf('rpm') >= 0 || text.indexOf('1500 rahway') >= 0 || text.indexOf('2900 woodbridge') >= 0 ||
-      text.indexOf('avenel') >= 0 || text.indexOf('edison') >= 0) {
-    return 'RPM';
-  }
+  // RPM — try specific locations first, then general
+  if (text.indexOf('2900 woodbridge') >= 0 || text.indexOf('rpm woodbridge') >= 0) return 'RPM_WOODBRIDGE';
+  if (text.indexOf('talmage') >= 0 || text.indexOf('rpm talmage') >= 0) return 'RPM_TALMAGE';
+  if (text.indexOf('1500 rahway') >= 0 || text.indexOf('avenel') >= 0 || text.indexOf('rpm avenel') >= 0) return 'RPM_AVENEL';
+  if (text.indexOf('rpm') >= 0 || text.indexOf('edison') >= 0) return 'RPM_AVENEL';
+  // Other warehouses
   if (text.indexOf('florence warehouse') >= 0 || text.indexOf('florence wh') >= 0) return 'Florence';
+  if (text.indexOf('cadeco') >= 0) return 'Cadeco';
   if (text.indexOf('dupuy') >= 0) return 'Dupuy';
+  if (text.indexOf('northdale') >= 0 || text.indexOf('rpm northdale') >= 0) return 'RPM_NORTHDALE';
   return null;
 }
 
